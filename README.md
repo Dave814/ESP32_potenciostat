@@ -1,3 +1,4 @@
+```
 CELL ON\n 		- response "OK"
 CELL OFF\n 		- response "OK"
 POTENTIOSTATIC\n 	- response "OK"
@@ -18,3 +19,4 @@ DACCALSET xxxxxx\n 	- 6cfg bytes (don't forget the space!) response "OK"
 
 SHUNTCALREAD\n		- response 6bytes
 SHUNTCALSAVE xxxxxx\n 	- 6cfg bytes (don't forget the space!) response "OK"
+```
