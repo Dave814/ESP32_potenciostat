@@ -3,6 +3,7 @@
         {
             "name": "Win32",
             "includePath": [
+                "C:\\Users\\david\\Documents\\Arduino\\libraries\\ArduinoJson\\src",
                 "C:\\Users\\david\\Documents\\Arduino\\libraries\\M5StickC\\src",
                 "C:\\Users\\david\\AppData\\Local\\Arduino15\\packages\\esp32\\tools\\**",
                 "C:\\Users\\david\\Documents\\Arduino\\libraries\\**",
