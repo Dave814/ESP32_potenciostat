@@ -1,3 +1,5 @@
+#include <ArduinoJson.h>
+
 #include <AXP192.h> //battery lib
 #include <M5Display.h>
 #include <M5StickC.h>
@@ -7,6 +9,8 @@
 #include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
+
+
 
 HardwareSerial mySerial(2); // create 2nd serial instance for Pot/Galvanostat
 
@@ -65,6 +69,8 @@ void setup()
     }
 
     server.on("/", handleRoot);
+
+    server.on("/json",json_test);
 
     server.on("/cell_on/", cell_on);
 
@@ -133,7 +139,7 @@ void adcread()
     }
     else
     {
-
+        
         Serial.println("[POST] ADCread");
         digitalWrite(led, 0);
         mySerial.print("ADCREAD\n");
@@ -151,14 +157,16 @@ void adcread()
         }
         else
         {
-            Serial.println("Here is ADC data :"); // here <-- 6bytes of ADC data is ready to send !
+            Serial.println("Here is ADC data :");  // here <-- 6bytes of ADC data is ready to send ! 
             server.send(200, "text/plain", "ADC data available");
             M5.Lcd.printf("ok\n");
             for (int i = 0; i < 6; i++)
             {
-
-                Serial.print(adcData[i], HEX); //print out 6 received ADC bytes
+                
+                Serial.print(adcData[i],HEX); //print out 6 received ADC bytes
+                
                 Serial.print(" ");
+
             }
         }
     }
@@ -180,6 +188,41 @@ void cell_off()
         M5.Lcd.setCursor(0, 10);
         M5.Lcd.printf("CELL OFF\n");
         expectResponse("OK");
+    }
+}
+
+void json_test()
+{
+ if (server.method() != HTTP_GET)
+    {
+        server.send(405, "text/plain", "Method Not Allowed");
+    }
+    else
+    {
+        StaticJsonDocument<200> Buffer;
+        //JsonObject& root = jsonBuffer.createObject();   // struktura
+        Buffer["ADC"] = "ADC1";
+
+        JsonArray data = Buffer.createNestedArray("data"); // vnorena struktura
+          data.add(11);                 // jednotlive bajty prosceeee 
+          data.add(22); 
+          data.add(33); 
+
+        JsonArray data_2 = Buffer.createNestedArray("data_2");
+          data_2.add(44);                 
+          data_2.add(55); 
+          data_2.add(66); 
+        //Buffer.printTo(Serial);
+
+        String json;
+        serializeJson(Buffer, json);          //naondim to na json formatik
+
+
+        
+
+        //digitalWrite(led, 1);
+        server.send(200, "application/json", json);  //proscceeee
+        Serial.println("[POST] JsonSent");
     }
 }
 
