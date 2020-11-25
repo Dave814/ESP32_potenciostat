@@ -133,7 +133,7 @@ void adcread()
     }
     else
     {
-        
+
         Serial.println("[POST] ADCread");
         digitalWrite(led, 0);
         mySerial.print("ADCREAD\n");
@@ -151,14 +151,14 @@ void adcread()
         }
         else
         {
-            Serial.println("Here is ADC data :");  // here <-- 6bytes of ADC data is ready to send ! 
+            Serial.println("Here is ADC data :"); // here <-- 6bytes of ADC data is ready to send !
+            server.send(200, "text/plain", "ADC data available");
+            M5.Lcd.printf("ok\n");
             for (int i = 0; i < 6; i++)
             {
-                server.send(200, "text/plain", "ADC data available");
-                Serial.print(adcData[i],HEX); //print out 6 received ADC bytes
-                M5.Lcd.printf("ok\n");
-                Serial.print(" ");
 
+                Serial.print(adcData[i], HEX); //print out 6 received ADC bytes
+                Serial.print(" ");
             }
         }
     }
