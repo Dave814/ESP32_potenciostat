@@ -1,3 +1,5 @@
+
+
 #include <ArduinoJson.h>
 
 #include <AXP192.h> //battery lib
@@ -12,6 +14,7 @@
 
 
 
+
 HardwareSerial mySerial(2); // create 2nd serial instance for Pot/Galvanostat
 
 #ifndef STASSID //Wi-Fi Credentials
@@ -23,6 +26,7 @@ HardwareSerial mySerial(2); // create 2nd serial instance for Pot/Galvanostat
 
 const char *ssid = STASSID;
 const char *password = STAPSK;
+
 char adcData[20];
 
 WebServer server(80);
@@ -63,11 +67,13 @@ void setup()
 
     ;
 
-    if (MDNS.begin("ESP32"))
+    if (MDNS.begin("ESP32"))    //now ESP32 can be reached at ESP32.local
     {
         Serial.println("MDNS responder started");
     }
 
+
+    //server handlers 
     server.on("/", handleRoot);
 
     server.on("/json",json_test);
@@ -120,16 +126,31 @@ void cell_on()
     }
     else
     {
+        mySerial.print("CELL ON\n");
+        mySerial.flush();
+
+        if(expectResponse("OK")==0)
+        {
         server.send(200, "text/plain", "[POST] CELL ON");
         Serial.println("[POST] CELL ON");
         digitalWrite(led, 0);
-        mySerial.print("CELL ON\n");
+        
         M5.Lcd.fillScreen(BLACK);
         M5.Lcd.setCursor(0, 10);
         M5.Lcd.printf("CELL ON\n");
-        expectResponse("OK");
+        }
     }
 }
+
+char * readADCdata( char* adcData)
+{
+    for(int i=0;i<6;i++)
+    {
+        adcData[i]=i;
+    }
+    return adcData;
+}
+
 
 void adcread()
 {
@@ -138,18 +159,20 @@ void adcread()
         server.send(405, "text/plain", "Method Not Allowed");
     }
     else
-    {
-        
+    {   
         Serial.println("[POST] ADCread");
-        digitalWrite(led, 0);
-        mySerial.print("ADCREAD\n");
+        mySerial.print("ADCREAD\n"); //requset data from ADC
+        mySerial.flush();
         M5.Lcd.fillScreen(BLACK);
         M5.Lcd.setCursor(0, 10);
         M5.Lcd.printf("ADCREAD\n"); //expect 6bytes of data or "wait"
 
-        uartRead6Bytes();
+        unsigned char uartData[6];  //readout data from ADC
+        uartRead6Bytes(uartData);
 
-        if (strncmp(adcData, "WAIT", 4) == 0)
+        jsonFormatter(uartData,sizeof(uartData)); // format data to JSON string 
+
+        if (strncmp((char*)uartData, "WAIT", 4) == 0)
         {
             server.send(200, "text/plain", "Wait for ADC conversion");
             Serial.println("Wait for ADC conversion");
@@ -163,12 +186,21 @@ void adcread()
             for (int i = 0; i < 6; i++)
             {
                 
-                Serial.print(adcData[i],HEX); //print out 6 received ADC bytes
-                
+                Serial.print(uartData[i],HEX);   //print out 6 received ADC bytes
+                TODO:                                //put data to JSON format and send to server
                 Serial.print(" ");
 
             }
         }
+        /*
+       char receivedADCdata[6];
+       char *gotADCdata = readADCdata(receivedADCdata);
+       Serial.println("printing data:");
+       for (int i =0;i<6;i++)
+       {
+           Serial.println(receivedADCdata[i]);
+       }
+       */
     }
 }
 
@@ -180,16 +212,21 @@ void cell_off()
     }
     else
     {
+        mySerial.print("CELL OFF\n");
+        mySerial.flush();
+        if(expectResponse("OK")==0)
+        {
         server.send(200, "text/plain", "[POST] CELL OFF");
         Serial.println("[POST] CELL OFF");
         digitalWrite(led, 1);
-        mySerial.print("CELL OFF\n");
         M5.Lcd.fillScreen(BLACK);
         M5.Lcd.setCursor(0, 10);
         M5.Lcd.printf("CELL OFF\n");
-        expectResponse("OK");
+        }
     }
 }
+
+
 
 void json_test()
 {
@@ -200,7 +237,6 @@ void json_test()
     else
     {
         StaticJsonDocument<200> Buffer;
-        //JsonObject& root = jsonBuffer.createObject();   // struktura
         Buffer["ADC"] = "ADC1";
 
         JsonArray data = Buffer.createNestedArray("data"); // vnorena struktura
@@ -248,7 +284,7 @@ void loop(void)
     server.handleClient();
 }
 
-void expectResponse(char *expResponse)
+int expectResponse(char *expResponse)
 {
     bool timeout = false;
     bool responded = false;
@@ -295,29 +331,31 @@ void expectResponse(char *expResponse)
         {
             Serial.println("reception correct");
             M5.Lcd.printf("Response OK\n");
+            return 0;
         }
         else
         {
             Serial.println("reception incorrect");
             M5.Lcd.printf("Response !OK\n");
-        }
+            return -1;
+        }        
     }
     else
     {
         Serial.println("response timeout");
         M5.Lcd.printf("Resp. timeout\n");
+        return -2;
     }
 }
 
-void uartRead6Bytes()
+void uartRead6Bytes(unsigned char * incomingData)
 {
 
     if (mySerial.available())
     {
         for (int i = 0; i < 6; i++)
         {
-            adcData[i] = mySerial.read();
+        incomingData[i]= mySerial.read();
         }
-        mySerial.flush();
     }
 }
