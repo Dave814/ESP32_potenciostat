@@ -1,12 +1,12 @@
 #include <ArduinoJson.h>
-#include <AXP192.h> //battery lib
-#include <M5Display.h>
 #include <M5StickC.h>
 #include <RTC.h>
 
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
+
+#include <math.h>
 
 HardwareSerial mySerial(2); // create 2nd serial instance for Pot/Galvanostat
 
@@ -33,7 +33,6 @@ const char *payload = "{ \"M7I3GJBcT1qSz8XUtd51vADaaIlezNV1Yj1Za1wb9YTd\" : \"ZB
 
 unsigned long oldTime = 0;
 int interval = 1000;
-
 void setup()
 {
     M5.begin();
@@ -49,6 +48,7 @@ void setup()
         delay(500);
         Serial.print(".");
     }
+    
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(ssid);
@@ -105,11 +105,14 @@ char *readADCdata(char *adcData)
 
 void adcread()
 {
-    mySerial.print("ADCREAD\n"); //requset data from ADC
-    mySerial.flush();
+    mySerial.println("ADCREAD"); //requset data from ADC
+    
 
     unsigned char uartData[6]; //readout data from ADC
-    uartRead6Bytes(uartData);
+    if (uartRead6Bytes(uartData)!=-1)
+    {
+
+    
 
     //jsonFormatter(uartData, sizeof(uartData)); // format data to JSON string
 
@@ -130,6 +133,11 @@ void adcread()
             Serial.print(" ");
         }
         Serial.println("");
+    }
+    }
+    else
+    {
+        Serial.println("No or invalid data received");
     }
 }
 
@@ -188,49 +196,13 @@ void loop(void)
     }
 }
 
-void changeMode(int command)
-{
-    if(command==POTENTIOSTATIC)
-    {
-        Serial.println("Potentiostatic mode");
-        mySerial.println("POTENTIOSTATIC");
-        expectResponse("ok");
-    }
-    else if(command==GALVANOSTATIC)
-    {
-        Serial.println("Galvanostatic mode");
-        mySerial.println("GALVANOSTATIC");
-        expectResponse("ok");
-    }
-}
-
-void setRange(int setRange)
-{
-    if(setRange==RANGE1)
-    {
-        Serial.println("Range1");
-        mySerial.println("RANGE1");
-        expectResponse("ok");
-    }
-    else if(setRange==RANGE2)
-    {
-        Serial.println("Range2");
-        mySerial.println("RANGE2");
-        expectResponse("ok");
-    }
-    else if(setRange==RANGE3)
-    {
-        Serial.println("Range3");
-        mySerial.println("RANGE3");
-        expectResponse("ok");
-    }
-}
-
 void resolveServerRequest()
 {
     String responseString = http.getString(); // read server response
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(0, 10);
+    char buff[20];
+    responseString.toCharArray(buff,sizeof(buff));
     if(responseString == "CELL ON")
     {
         cell_on();
@@ -259,9 +231,10 @@ void resolveServerRequest()
     {
         setRange(RANGE3);
     }
-    else if(responseString == "DACSET")
+    //else if(responseString == "DACSET")
+    else if (strncmp(buff,"DACSET ",7) == 0)
     {
-
+        DACset(-293601); //-314572 for 1V output
     }
     else if(responseString == "DACCAL")
     {
@@ -281,11 +254,11 @@ void resolveServerRequest()
     }
     else if(responseString == "DACCALGET")
     {
-        
+        DACCalGet();
     }
     else if(responseString == "DACCALSET")
     {
-        
+
     }
     else if(responseString == "SHUNTCALREAD")
     {
@@ -333,7 +306,6 @@ int expectResponse(char *expResponse)
         uint8_t c;
         while (mySerial.available())
         {
-
             c = mySerial.read();
             while ((c != '\r') && (c != '\n') && (i < 9))
             {
@@ -365,9 +337,8 @@ int expectResponse(char *expResponse)
     }
 }
 
-void uartRead6Bytes(unsigned char *incomingData)
+int uartRead6Bytes(unsigned char *incomingData)
 {
-
     if (mySerial.available())
     {
         for (int i = 0; i < 6; i++)
@@ -375,4 +346,104 @@ void uartRead6Bytes(unsigned char *incomingData)
             incomingData[i] = mySerial.read();
         }
     }
+    else return -1;
+}
+
+
+
+void changeMode(int command)
+{
+    if(command==POTENTIOSTATIC)
+    {
+        Serial.println("Potentiostatic mode");
+        mySerial.println("POTENTIOSTATIC");
+        expectResponse("ok");
+    }
+    else if(command==GALVANOSTATIC)
+    {
+        Serial.println("Galvanostatic mode");
+        mySerial.println("GALVANOSTATIC");
+        expectResponse("ok");
+    }
+}
+
+void setRange(int setRange)
+{
+    if(setRange==RANGE1)
+    {
+        Serial.println("Range1");
+        mySerial.println("RANGE1");
+        expectResponse("ok");
+    }
+    else if(setRange==RANGE2)
+    {
+        Serial.println("Range2");
+        mySerial.println("RANGE2");
+        expectResponse("ok");
+    }
+    else if(setRange==RANGE3)
+    {
+        Serial.println("Range3");
+        mySerial.println("RANGE3");
+        expectResponse("ok");
+    }
+}
+
+
+void DACCalGet()
+{
+    mySerial.print("DACCALGET\n");
+    mySerial.flush();
+    unsigned char uartData[6];
+    uartRead6Bytes(uartData);
+
+            for (int i = 0; i < 6; i++)
+        {
+
+            Serial.print(uartData[i], HEX); //print out 6 received ADC bytes
+        TODO:                               //put data to JSON format and send to server
+            Serial.print(" ");
+        }
+        Serial.println("");
+
+}
+
+void DACset (long rawVal) //send 3bytes of raw DAC data MSB first
+{
+    char DACbyte1,DACbyte2,DACbyte3;
+    decimal_to_dac_bytes(rawVal,&DACbyte1,&DACbyte2,&DACbyte3);
+    mySerial.print("DACSET ");
+    mySerial.print(DACbyte3);
+    mySerial.print(DACbyte2);
+    mySerial.print(DACbyte1);
+    mySerial.print("\n");
+
+        if (expectResponse("OK") == 0)
+    {
+        Serial.println("command - DACSET");
+        M5.Lcd.printf("DACSET\n");
+    }
+    else
+    {
+        Serial.println("Device not responded!");
+    }
+}
+
+
+void decimal_to_dac_bytes(long value,char *byte1,char *byte2,char *byte3)
+{
+
+	//Convert a floating-point number, ranging from -2**19 to 2**19-1, to three data bytes in the proper format for the DAC1220.
+	long code = (1<<19)+(long)value; // Convert the (signed) input value to an unsigned 20-bit integer with zero at midway ((1<<19) +
+    
+	if(code > ((1<<20) - 1)) // crop the code if it is not within 20bytes 
+        code = (1<<20) - 1;
+    else if (code < 0 ) 
+        code = 0;  
+        
+    Serial.print("Code : ");
+    Serial.println(code);
+	*byte1 = code<<4; //LSB
+	*byte2 = code >> 4;
+	*byte3 = code >> 12; //MSB
 }
