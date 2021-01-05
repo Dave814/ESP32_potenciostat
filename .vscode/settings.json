@@ -10,5 +10,6 @@
         "*.tcc": "cpp",
         "system_error": "cpp",
         "ostream": "cpp"
-    }
+    },
+    "C_Cpp.errorSquiggles": "Enabled"
 }
