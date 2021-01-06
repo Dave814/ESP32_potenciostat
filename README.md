@@ -1,4 +1,12 @@
 ```
+Working commands 16/16 
+
+
+
+Command for device is received from temporary NodeRed server via HTTP. 
+
+
+
 CELL ON\n 		- response "OK"
 CELL OFF\n 		- response "OK"
 POTENTIOSTATIC\n 	- response "OK"

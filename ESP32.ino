@@ -37,7 +37,7 @@ void setup()
 {
     M5.begin();
     Serial.begin(115200);                      // debug Serial
-    mySerial.begin(19200, SERIAL_8N1, 36, 26); // Pot/Galvanostat serial
+    mySerial.begin(19200, SERIAL_8N1, 36, 26); // Pot/Galvanostat Serial
 
     WiFi.begin(ssid, password);
     Serial.println("");
@@ -48,7 +48,7 @@ void setup()
         delay(500);
         Serial.print(".");
     }
-    
+
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(ssid);
@@ -63,9 +63,8 @@ void setup()
     M5.Lcd.printf("M5 Test LCD!");
     Serial.println("M5 Test UART!");
 
-    
     http.begin(serverName);
-    http.addHeader("Content-Type", "application/json");    
+    http.addHeader("Content-Type", "application/json");
 }
 
 /*
@@ -102,96 +101,96 @@ void json_test()
 
 void loop(void)
 {
-    if(oldTime + interval <= millis()){  // once per second check if server has some commands 
-    Serial.println("requesting server commands");
-    int resp=http.GET();
-    Serial.print("Response from server : ");
-    Serial.println(resp);
-    if(resp==200)
-    
-     {
-         Serial.println("Resolving server request");
-         resolveServerRequest();
-     }
-    else
-    {
-        Serial.println("Do nothing");
-    }
-    oldTime=millis();
+    if (oldTime + interval <= millis())
+    { // once per second check if server has some commands
+        Serial.println("requesting server commands");
+        int resp = http.GET();
+        Serial.print("Response from server : ");
+        Serial.println(resp);
+        if (resp == 200)
+        {
+            Serial.println("Resolving server request");
+            resolveServerRequest();
+        }
+        else
+        {
+            Serial.println("Do nothing");
+        }
+        oldTime = millis();
     }
 }
-
+//TODO: change the way commands are received. Change the string to hex number. i.e. : CELL ON = 0x01;
 void resolveServerRequest()
 {
     String responseString = http.getString(); // read server response
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(0, 10);
     char buff[20];
-    responseString.toCharArray(buff,sizeof(buff));
-    if(responseString == "CELL ON")
+    responseString.toCharArray(buff, sizeof(buff));
+    if (responseString == "CELL ON")
     {
         cell_on();
     }
-    else if(responseString == "CELL OFF")
+    else if (responseString == "CELL OFF")
     {
         cell_off();
     }
-    else if(responseString == "POTENTIOSTATIC")
+    else if (responseString == "POTENTIOSTATIC")
     {
         changeMode(POTENTIOSTATIC);
     }
-    else if(responseString == "GALVANOSTATIC")
+    else if (responseString == "GALVANOSTATIC")
     {
         changeMode(GALVANOSTATIC);
     }
-    else if(responseString == "RANGE1")
+    else if (responseString == "RANGE1")
     {
         setRange(RANGE1);
     }
-    else if(responseString == "RANGE2")
+    else if (responseString == "RANGE2")
     {
         setRange(RANGE2);
     }
-    else if(responseString == "RANGE3")
+    else if (responseString == "RANGE3")
     {
         setRange(RANGE3);
     }
-    else if (strncmp(buff,"DACSET ",7) == 0)
+    else if (strncmp(buff, "DACSET ", 7) == 0)
     {
         //TODO: push data from buff string to DACset as parameter
         DACset(-293601); //-314572 for 1V output
     }
-    else if(responseString == "DACCAL")
+    else if (responseString == "DACCAL")
     {
         DACCal();
     }
-    else if(responseString == "ADCREAD") //read data from ADC converters
+    else if (responseString == "ADCREAD") //read data from ADC converters
     {
         ADCread();
     }
-    else if(responseString == "OFFSETREAD")
+    else if (responseString == "OFFSETREAD")
     {
-        
+        OffsetRead();
     }
-    else if(responseString == "OFFSETSAVE")
+    else if (responseString == "OFFSETSAVE")
     {
-        
+        OffsetSave();
     }
-    else if(responseString == "DACCALGET")
+    else if (responseString == "DACCALGET")
     {
         DACCalGet();
     }
-    else if(responseString == "DACCALSET")
+    else if (responseString == "DACCALSET")
     {
-
+        DACCalSet();
     }
-    else if(responseString == "SHUNTCALREAD")
+    else if (responseString == "SHUNTCALREAD")
     {
-        
+        ShuntCalRead();
     }
-    else if(responseString == "SHUNTCALSAVE")
+    else if (responseString == "SHUNTCALSAVE")
     {
-        
+        ShuntCalSave();
     }
     else
     {
@@ -206,7 +205,6 @@ int expectResponse(char *expResponse, int interval)
     bool responded = false;
     unsigned long currentMillis = millis();
     unsigned long previousMillis = currentMillis;
-    //uint interval = 50;
 
     while (!timeout && !responded)
     {
@@ -266,6 +264,16 @@ int expectResponse(char *expResponse, int interval)
 
 int uartRead6Bytes(unsigned char *incomingData)
 {
+    unsigned long nowTime = millis();
+    bool timeout = false;
+    while (!mySerial.available() && !timeout)
+    {
+        if ((millis() - nowTime) > 50) //wait for 50ms in the loop for data reception
+        {
+            timeout = true;
+            return -1;
+        }
+    }
     if (mySerial.available())
     {
         for (int i = 0; i < 6; i++)
@@ -273,7 +281,8 @@ int uartRead6Bytes(unsigned char *incomingData)
             incomingData[i] = mySerial.read();
         }
     }
-    else return -1;
+    else
+        return -1;
 }
 
 void cell_on()
@@ -282,7 +291,7 @@ void cell_on()
     mySerial.flush();
     Serial.println("command - CELL ON");
     M5.Lcd.printf("CELL ON\n");
-    expectResponse("OK",50);
+    expectResponse("OK", 50);
 }
 
 void cell_off()
@@ -291,85 +300,79 @@ void cell_off()
     mySerial.flush();
     Serial.println("command - CELL OFF");
     M5.Lcd.printf("CELL OFF\n");
-    expectResponse("OK",50);
+    expectResponse("OK", 50);
 }
 
 void changeMode(int command)
 {
-    if(command==POTENTIOSTATIC)
+    if (command == POTENTIOSTATIC)
     {
         Serial.println("Potentiostatic mode");
         mySerial.print("POTENTIOSTATIC\n");
         M5.Lcd.printf("POT mode\n");
-        expectResponse("OK",50);
+        expectResponse("OK", 50);
     }
-    else if(command==GALVANOSTATIC)
+    else if (command == GALVANOSTATIC)
     {
         Serial.println("Galvanostatic mode");
         mySerial.print("GALVANOSTATIC\n");
         M5.Lcd.printf("GALV mode\n");
-        expectResponse("OK",50);
+        expectResponse("OK", 50);
     }
 }
 
 void setRange(int setRange)
 {
-    if(setRange==RANGE1)
+    if (setRange == RANGE1)
     {
         Serial.println("Range1");
         M5.Lcd.printf("Range1\n");
         mySerial.print("RANGE 1\n");
-        expectResponse("OK",50);
+        expectResponse("OK", 50);
     }
-    else if(setRange==RANGE2)
+    else if (setRange == RANGE2)
     {
         Serial.println("Range2");
         M5.Lcd.printf("Range2\n");
         mySerial.print("RANGE 2\n");
-        expectResponse("OK",50);
+        expectResponse("OK", 50);
     }
-    else if(setRange==RANGE3)
+    else if (setRange == RANGE3)
     {
         Serial.println("Range3");
         M5.Lcd.printf("Range3\n");
         mySerial.print("RANGE 3\n");
-        expectResponse("OK",50);
+        expectResponse("OK", 50);
     }
 }
 
 void ADCread()
 {
-    mySerial.print("ADCREAD\n"); //requset data from ADC
+    mySerial.print("ADCREAD\n"); //request data from ADC
     Serial.println("ADCREAD command");
     M5.lcd.printf("ADCREAD\n");
     unsigned char uartData[6]; //readout data from ADC
-    if (uartRead6Bytes(uartData)!=-1)
+    if (uartRead6Bytes(uartData) != -1)
     {
-
-    
-
-    //jsonFormatter(uartData, sizeof(uartData)); // format data to JSON string
-
-    if (strncmp((char *)uartData, "WAIT", 4) == 0)
-    {
-        Serial.println("Wait for ADC conversion");
-        M5.Lcd.printf("Wait\n");
-    }
-    else
-    {
-        Serial.println("Here is ADC data :"); // here <-- 6bytes of ADC data is ready to send !
-        M5.Lcd.printf("Data : \n");
-        for (int i = 0; i < 6; i++)
+        //jsonFormatter(uartData, sizeof(uartData)); // format data to JSON string
+        if (strncmp((char *)uartData, "WAIT", 4) == 0)
         {
-
-            Serial.print(uartData[i], HEX); //print out 6 received ADC bytes
-            
-       // TODO:put data to JSON format and send to server
-            Serial.print(" ");
+            Serial.println("Wait for ADC conversion");
+            M5.Lcd.printf("Wait\n");
         }
-        M5.Lcd.printf("ADC Data OK\n");
-        Serial.println("");
-    }
+        else
+        {
+            Serial.println("Here is ADC data :"); // here <-- 6bytes of ADC data is ready to send !
+            M5.Lcd.printf("Data : \n");
+            for (int i = 0; i < 6; i++)
+            {
+                Serial.print(uartData[i], HEX); //print out 6 received ADC bytes
+                // TODO:put data to JSON format and send to server
+                Serial.print(" ");
+            }
+            M5.Lcd.printf("ADC Data OK\n");
+            Serial.println("");
+        }
     }
     else
     {
@@ -378,15 +381,46 @@ void ADCread()
     }
 }
 
-char *readADCdata(char *adcData)
+void OffsetRead() //Read 6 offset bytes from flash, bytes [0:3] = potential offset , bytes [4:60] = current offset
 {
-    for (int i = 0; i < 6; i++) 
+    mySerial.print("OFFSETREAD\n");
+    mySerial.flush();
+    Serial.println("OFFSETREAD command");
+    M5.Lcd.printf("OFFSETREAD\n");
+    unsigned char uartData[6];
+    if (uartRead6Bytes(uartData) != -1)
     {
-        adcData[i] = i;
+        Serial.println("OFFSET DATA :");
+        for (int i = 0; i < 6; i++)
+        {
+            Serial.print(uartData[i]);
+            Serial.print(" ");
+        }
+        M5.Lcd.printf("OFFSET Data ok\n");
+        Serial.println("");
     }
-    return adcData;
+    else
+    {
+        Serial.println("No or invalid data received");
+        M5.Lcd.print("Data err\n");
+    }
 }
 
+void OffsetSave()
+{
+    uint8_t OffsetData[6];
+    OffsetData[0] = 0;
+    Serial.println("OFFSETSAVE command");
+    M5.Lcd.print("OFFSETSAVE\n");
+    mySerial.print("OFFSETSAVE ");
+    for (int i = 0; i < 6; i++)
+    {
+        mySerial.write(OffsetData[0]);
+    }
+    mySerial.print("\n");
+    mySerial.flush();
+    expectResponse("OK", 50);
+}
 
 void DACCalGet()
 {
@@ -397,21 +431,20 @@ void DACCalGet()
     unsigned char uartData[6];
     uartRead6Bytes(uartData);
 
-            for (int i = 0; i < 6; i++)
-        {
-            Serial.print(uartData[i], HEX);
-        TODO: //put data to JSON format and send to server
-            Serial.print(" ");
-        }
-        M5.Lcd.printf("CAL Data ok\n");
-        Serial.println("");
-
+    for (int i = 0; i < 6; i++)
+    {
+        Serial.print(uartData[i]);
+    TODO: //put data to JSON format and send to server
+        Serial.print(" ");
+    }
+    M5.Lcd.printf("CAL Data ok\n");
+    Serial.println("");
 }
 
-void DACset (long rawVal) //send 3bytes of raw DAC data MSB first
+void DACset(long rawVal) //send 3bytes of raw DAC data MSB first
 {
-    char DACbyte1,DACbyte2,DACbyte3;
-    decimal_to_dac_bytes(rawVal,&DACbyte1,&DACbyte2,&DACbyte3);
+    char DACbyte1, DACbyte2, DACbyte3;
+    decimal_to_dac_bytes(rawVal, &DACbyte1, &DACbyte2, &DACbyte3);
     mySerial.print("DACSET ");
     mySerial.print(DACbyte3);
     mySerial.print(DACbyte2);
@@ -419,7 +452,7 @@ void DACset (long rawVal) //send 3bytes of raw DAC data MSB first
     mySerial.print("\n");
     Serial.println("command - DACSET");
     M5.Lcd.printf("DACSET\n");
-    expectResponse("OK",50);
+    expectResponse("OK", 50);
 }
 
 void DACCal()
@@ -427,23 +460,72 @@ void DACCal()
     Serial.println("command - DACCal");
     M5.Lcd.printf("DACCAL\n");
     mySerial.print("DACCAL\n");
-    expectResponse("OK",600);
+    expectResponse("OK", 600);
 }
 
-
-void decimal_to_dac_bytes(long value,char *byte1,char *byte2,char *byte3)
+void DACCalSet()
 {
-	//Convert a floating-point number, ranging from -2**19 to 2**19-1, to three data bytes in the proper format for the DAC1220.
-	long code = (1<<19)+(long)value; // Convert the (signed) input value to an unsigned 20-bit integer with zero at midway ((1<<19) +
-    
-	if(code > ((1<<20) - 1)) // crop the code if it is not within 20bytes 
-        code = (1<<20) - 1;
-    else if (code < 0 ) 
-        code = 0;  
-        
+    int CalData[6];
+    CalData[0] = 0;
+    Serial.println("DACCALSET command");
+    M5.Lcd.print("DACCALSET\n");
+    mySerial.print("DACCALSET ");
+    for (int i = 0; i < 6; i++)
+    {
+        mySerial.write(CalData[0]);
+    }
+    mySerial.print("\n");
+    mySerial.flush();
+    expectResponse("OK", 50);
+}
+
+void ShuntCalRead()
+{
+    mySerial.print("SHUNTCALREAD\n");
+    mySerial.flush();
+    Serial.println("SHUNTCALREAD command");
+    M5.Lcd.printf("SHUTCALREAD\n");
+    unsigned char uartData[6];
+    uartRead6Bytes(uartData);
+    Serial.println("SHUNTCAL Data :");
+    for (int i = 0; i < 6; i++)
+    {
+        Serial.print(uartData[i]);
+        Serial.print(" ");
+    }
+    M5.Lcd.printf("SHUNTCAL Data ok\n");
+    Serial.println("");
+}
+
+void ShuntCalSave()
+{
+    int ShuntCalData[6];
+    ShuntCalData[0] = 0;
+    Serial.println("SHUNTCALSAVE command");
+    M5.Lcd.print("SHUNTCALSAVE\n");
+    mySerial.print("SHUNTCALSAVE ");
+    for (int i = 0; i < 6; i++)
+    {
+        mySerial.write(ShuntCalData[0]);
+    }
+    mySerial.print("\n");
+    mySerial.flush();
+    expectResponse("OK", 50);
+}
+
+void decimal_to_dac_bytes(long value, char *byte1, char *byte2, char *byte3)
+{
+    //Convert a floating-point number, ranging from -2**19 to 2**19-1, to three data bytes in the proper format for the DAC1220.
+    long code = (1 << 19) + (long)value; // Convert the (signed) input value to an unsigned 20-bit integer with zero at midway ((1<<19) +
+
+    if (code > ((1 << 20) - 1)) // crop the code if it is not within 20bytes
+        code = (1 << 20) - 1;
+    else if (code < 0)
+        code = 0;
+
     Serial.print("Code : ");
     Serial.println(code);
-	*byte1 = code<<4; //LSB
-	*byte2 = code >> 4;
-	*byte3 = code >> 12; //MSB
+    *byte1 = code << 4; //LSB
+    *byte2 = code >> 4;
+    *byte3 = code >> 12; //MSB
 }
