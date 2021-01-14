@@ -1,12 +1,11 @@
-#include <ArduinoJson.h>
 #include <M5StickC.h>
 #include <RTC.h>
-
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
 
 #include <math.h>
+
 
 HardwareSerial mySerial(2); // create 2nd serial instance for Pot/Galvanostat
 
@@ -29,13 +28,10 @@ const char *serverName = "http://192.168.0.200:1880/espTest";
 
 HTTPClient http;
 
-const char *payload = "{ \"M7I3GJBcT1qSz8XUtd51vADaaIlezNV1Yj1Za1wb9YTd\" : \"ZBkJstJ2bBIrCkXnPWOVNZYiG5KloC8ad9rW6ZpJeWfx\" }"; //temporary payload for testing purposes
-
 unsigned long oldTime = 0;
-int interval = 1000;
+int interval = 10000;
 void setup()
 {
-    M5.begin();
     Serial.begin(115200);                      // debug Serial
     mySerial.begin(19200, SERIAL_8N1, 36, 26); // Pot/Galvanostat Serial
 
@@ -43,10 +39,17 @@ void setup()
     Serial.println("");
 
     // Wait for connection
+    int connectionCounter = 0;
     while (WiFi.status() != WL_CONNECTED)
     {
         delay(500);
         Serial.print(".");
+        connectionCounter++;
+        if(connectionCounter > 10)
+        {
+            Serial.println("Rebooting ESP.......");
+            ESP.restart();
+        }
     }
 
     Serial.println("");
@@ -54,50 +57,11 @@ void setup()
     Serial.println(ssid);
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
-
-    M5.Lcd.fillScreen(BLACK);
-    delay(100);
-    M5.Lcd.setCursor(0, 10);
-    M5.Lcd.setTextColor(WHITE);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.printf("M5 Test LCD!");
     Serial.println("M5 Test UART!");
 
     http.begin(serverName);
     http.addHeader("Content-Type", "application/json");
 }
-
-/*
-void json_test()
-{
-    if (server.method() != HTTP_GET)
-    {
-        server.send(405, "text/plain", "Method Not Allowed");
-    }
-    else
-    {
-        StaticJsonDocument<200> Buffer;
-        Buffer["ADC"] = "ADC1";
-
-        JsonArray data = Buffer.createNestedArray("data"); // vnorena struktura
-        data.add(11);                                      // jednotlive bajty prosceeee
-        data.add(22);
-        data.add(33);
-
-        JsonArray data_2 = Buffer.createNestedArray("data_2");
-        data_2.add(44);
-        data_2.add(55);
-        data_2.add(66);
-        //Buffer.printTo(Serial);
-
-        String json;
-        serializeJson(Buffer, json); //naondim to na json formatik
-
-        server.send(200, "application/json", json); //proscceeee
-        Serial.println("[POST] JsonSent");
-    }
-}
-*/
 
 void loop(void)
 {
@@ -123,8 +87,6 @@ void loop(void)
 void resolveServerRequest()
 {
     String responseString = http.getString(); // read server response
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 10);
     char buff[20];
     responseString.toCharArray(buff, sizeof(buff));
     if (responseString == "CELL ON")
@@ -192,10 +154,13 @@ void resolveServerRequest()
     {
         ShuntCalSave();
     }
+    else if(strncmp(buff,"CV ",3)==0)
+    {
+        //cv_sweep(1, -1, 5, -5, 100, 2); //startpot, endpot, upbound, lowbound, scanrate, numofscans
+    }
     else
     {
         Serial.println("Do nothing");
-        M5.Lcd.printf("Do nothing\n");
     }
 }
 
@@ -244,20 +209,17 @@ int expectResponse(char *expResponse, int interval)
         if (strncmp(receivedResponse, expResponse, 2) == 0)
         {
             Serial.println("Response OK");
-            M5.Lcd.printf("Response OK\n");
             return 0;
         }
         else
         {
             Serial.println("Response !OK");
-            M5.Lcd.printf("Response !OK\n");
             return -1;
         }
     }
     else
     {
         Serial.println("Response timeout");
-        M5.Lcd.printf("Resp. timeout\n");
         return -2;
     }
 }
@@ -290,7 +252,6 @@ void cell_on()
     mySerial.print("CELL ON\n");
     mySerial.flush();
     Serial.println("command - CELL ON");
-    M5.Lcd.printf("CELL ON\n");
     expectResponse("OK", 50);
 }
 
@@ -299,7 +260,6 @@ void cell_off()
     mySerial.print("CELL OFF\n");
     mySerial.flush();
     Serial.println("command - CELL OFF");
-    M5.Lcd.printf("CELL OFF\n");
     expectResponse("OK", 50);
 }
 
@@ -309,38 +269,33 @@ void changeMode(int command)
     {
         Serial.println("Potentiostatic mode");
         mySerial.print("POTENTIOSTATIC\n");
-        M5.Lcd.printf("POT mode\n");
         expectResponse("OK", 50);
     }
     else if (command == GALVANOSTATIC)
     {
         Serial.println("Galvanostatic mode");
         mySerial.print("GALVANOSTATIC\n");
-        M5.Lcd.printf("GALV mode\n");
         expectResponse("OK", 50);
     }
 }
 
 void setRange(int setRange)
 {
-    if (setRange == RANGE1)
+    if (setRange == RANGE1) //20mA //10R
     {
         Serial.println("Range1");
-        M5.Lcd.printf("Range1\n");
         mySerial.print("RANGE 1\n");
         expectResponse("OK", 50);
     }
-    else if (setRange == RANGE2)
+    else if (setRange == RANGE2) //200uA //1k
     {
         Serial.println("Range2");
-        M5.Lcd.printf("Range2\n");
         mySerial.print("RANGE 2\n");
         expectResponse("OK", 50);
     }
-    else if (setRange == RANGE3)
+    else if (setRange == RANGE3) //2uA //100k 
     {
         Serial.println("Range3");
-        M5.Lcd.printf("Range3\n");
         mySerial.print("RANGE 3\n");
         expectResponse("OK", 50);
     }
@@ -350,7 +305,6 @@ void ADCread()
 {
     mySerial.print("ADCREAD\n"); //request data from ADC
     Serial.println("ADCREAD command");
-    M5.lcd.printf("ADCREAD\n");
     unsigned char uartData[6]; //readout data from ADC
     if (uartRead6Bytes(uartData) != -1)
     {
@@ -358,26 +312,26 @@ void ADCread()
         if (strncmp((char *)uartData, "WAIT", 4) == 0)
         {
             Serial.println("Wait for ADC conversion");
-            M5.Lcd.printf("Wait\n");
         }
         else
         {
             Serial.println("Here is ADC data :"); // here <-- 6bytes of ADC data is ready to send !
-            M5.Lcd.printf("Data : \n");
             for (int i = 0; i < 6; i++)
             {
                 Serial.print(uartData[i], HEX); //print out 6 received ADC bytes
                 // TODO:put data to JSON format and send to server
                 Serial.print(" ");
             }
-            M5.Lcd.printf("ADC Data OK\n");
             Serial.println("");
+            //Serial.print("converted ADCdata : ");
+            Serial.println(ADCDataToVoltage(twoComplementToDecimal(uartData[0],uartData[1],uartData[2])));
+            Serial.println(ADCDataToVoltage(twoComplementToDecimal(uartData[3],uartData[4],uartData[5])));
+
         }
     }
     else
     {
         Serial.println("No or invalid data received");
-        M5.Lcd.printf("Data err\n");
     }
 }
 
@@ -386,7 +340,6 @@ void OffsetRead() //Read 6 offset bytes from flash, bytes [0:3] = potential offs
     mySerial.print("OFFSETREAD\n");
     mySerial.flush();
     Serial.println("OFFSETREAD command");
-    M5.Lcd.printf("OFFSETREAD\n");
     unsigned char uartData[6];
     if (uartRead6Bytes(uartData) != -1)
     {
@@ -396,13 +349,11 @@ void OffsetRead() //Read 6 offset bytes from flash, bytes [0:3] = potential offs
             Serial.print(uartData[i]);
             Serial.print(" ");
         }
-        M5.Lcd.printf("OFFSET Data ok\n");
         Serial.println("");
     }
     else
     {
         Serial.println("No or invalid data received");
-        M5.Lcd.print("Data err\n");
     }
 }
 
@@ -411,7 +362,6 @@ void OffsetSave()
     uint8_t OffsetData[6];
     OffsetData[0] = 0;
     Serial.println("OFFSETSAVE command");
-    M5.Lcd.print("OFFSETSAVE\n");
     mySerial.print("OFFSETSAVE ");
     for (int i = 0; i < 6; i++)
     {
@@ -427,7 +377,6 @@ void DACCalGet()
     mySerial.print("DACCALGET\n");
     mySerial.flush();
     Serial.println("DACCALGET command");
-    M5.Lcd.printf("DACCALGET\n");
     unsigned char uartData[6];
     uartRead6Bytes(uartData);
 
@@ -437,7 +386,6 @@ void DACCalGet()
     TODO: //put data to JSON format and send to server
         Serial.print(" ");
     }
-    M5.Lcd.printf("CAL Data ok\n");
     Serial.println("");
 }
 
@@ -451,14 +399,12 @@ void DACset(long rawVal) //send 3bytes of raw DAC data MSB first
     mySerial.print(DACbyte3);
     mySerial.print("\n");
     Serial.println("command - DACSET");
-    M5.Lcd.printf("DACSET\n");
     expectResponse("OK", 50);
 }
 
 void DACCal()
 {
     Serial.println("command - DACCal");
-    M5.Lcd.printf("DACCAL\n");
     mySerial.print("DACCAL\n");
     expectResponse("OK", 600);
 }
@@ -468,7 +414,6 @@ void DACCalSet()
     int CalData[6];
     CalData[0] = 0;
     Serial.println("DACCALSET command");
-    M5.Lcd.print("DACCALSET\n");
     mySerial.print("DACCALSET ");
     for (int i = 0; i < 6; i++)
     {
@@ -484,7 +429,6 @@ void ShuntCalRead()
     mySerial.print("SHUNTCALREAD\n");
     mySerial.flush();
     Serial.println("SHUNTCALREAD command");
-    M5.Lcd.printf("SHUTCALREAD\n");
     unsigned char uartData[6];
     uartRead6Bytes(uartData);
     Serial.println("SHUNTCAL Data :");
@@ -493,16 +437,14 @@ void ShuntCalRead()
         Serial.print(uartData[i]);
         Serial.print(" ");
     }
-    M5.Lcd.printf("SHUNTCAL Data ok\n");
     Serial.println("");
 }
 
-void ShuntCalSave()
+void ShuntCalSave() 
 {
     int ShuntCalData[6];
     ShuntCalData[0] = 0;
     Serial.println("SHUNTCALSAVE command");
-    M5.Lcd.print("SHUNTCALSAVE\n");
     mySerial.print("SHUNTCALSAVE ");
     for (int i = 0; i < 6; i++)
     {
@@ -513,7 +455,7 @@ void ShuntCalSave()
     expectResponse("OK", 50);
 }
 
-void decimal_to_dac_bytes(long value, char *byte1, char *byte2, char *byte3)
+void decimal_to_dac_bytes(long value, char *byte1, char *byte2, char *byte3) // Working like a charm
 {
     //Convert a floating-point number, ranging from -2**19 to 2**19-1, to three data bytes in the proper format for the DAC1220.
     long code = (1 << 19) + (long)value; // Convert the (signed) input value to an unsigned 20-bit integer with zero at midway ((1<<19) +
@@ -529,3 +471,144 @@ void decimal_to_dac_bytes(long value, char *byte1, char *byte2, char *byte3)
     *byte2 = (code & 0x0000FF00) >> 8;
     *byte3 = (code & 0x000000FF);
 }
+
+long twoComplementToDecimal(int msb,int middlebyte,int lsb) // Working like a charm
+{ // Convert a 22-bit two-complement ADC value consisting of three bytes to a signed integer
+    bool ovh = false;
+    bool ovl = false;
+    long answer;
+
+    if(msb>63 && msb <128) // check for high overflow
+    {
+        ovh = true;
+    }
+     
+    if(msb > 127) // check for low overflow
+        {
+            ovl = true;
+        }
+    long combined_value = ((msb%64)<<16)+(middlebyte<<8)+lsb; // get rid of overflow bits
+    if(!ovh && !ovl)
+    {
+        if(msb > 31) //b21 set -> negative number
+        {
+            answer = combined_value - (1<<22);
+        }
+        else
+        {
+            answer = combined_value;
+        }    
+    }
+    else // overflow
+    {
+        if(msb > 127) //b23 set -> negative number
+        {
+            answer = combined_value - (1<<22);
+        }
+        else
+        {
+            answer = combined_value;
+        }
+    }
+    Serial.print("ADC Answer : ");
+    Serial.println(answer);
+    return answer;
+}
+/*
+int autorange(int current) //return num of measurements to skip to suppress artifacts
+{
+    float relativecurrent=abs(current/(20/100)<<currentrange);
+
+    if((relativecurrent > 1.05) && (currentrange !=0))
+    {
+        overcounter +=1;
+    }
+    else 
+    {
+        overcounter = 0;
+    }
+    if((relativecurrent < 0.0095)  &&(currentrange =!2))
+    {
+        undercounter -=1;
+    }
+    else 
+    {
+        undercounter = 0; 
+    }
+
+    if(overcounter > 3)
+    {
+        currentrange -=1;
+        //setRange() //TODO:
+        overcounter = 0;   
+        return 2; //skip next two measurements to suppress artifacts
+    }
+    else if(undercounter > 3)
+    {
+        currentrange +=1;
+        //setRange() //TODO:
+        undercounter = 0;
+        return 2; //skip next two measurements to suppress artifacts
+    }
+    else return 0;
+}
+*/
+int current_range_from_current(float current)
+{
+    current = abs(current);
+    if(current <= 0.002)
+    {
+        return 2; // lowest current range (2uA)
+    }
+    else if(current <= 0.2)
+    {
+        return 1; // intermediate current range (200uA)
+    }
+    else
+    {
+        return 0; // highest current range (20mA)
+    }
+}
+/*
+void cv_sweep_setup(int start_potential)
+{
+    DACset(start_potential);
+    changeMode(POTENTIOSTATIC);
+    setRange(RANGE3);
+    cell_on();
+    ADCread();
+    ADCread();
+    autorange();
+    ADCread();
+    ADCread();
+    autorange();
+
+    
+}
+*/
+/*
+void cv_sweep(int ustart, int ustop, int ubound, int lbound, int scanrate, int n) //try to process data every 100 samples
+// ustart -- start potential
+// ustop -- stop potential
+// ubound -- upper potential bound
+// lbound -- lower potential bound
+// scanrate -- scanrate in mV/s
+// n -- number of scans
+{
+    cv_sweep_setup();
+}
+*/
+
+double ADCDataToVoltage(long ADCvoltage)
+{
+    float potOffset = 0.000;
+    double voltage = ((double)ADCvoltage-potOffset)/2097152.000*8.000;
+    return voltage;
+}
+/*
+long ADCDataToCurrent(long ADCcurrent)
+{
+    int currOffset = 0;
+    long current = ADCcurrent-currOffset)/(2097152*25)/(shuntCalibration[currentRange]*100**currentrange);
+    return current;
+}*/
