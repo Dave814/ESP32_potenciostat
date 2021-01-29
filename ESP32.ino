@@ -4,8 +4,8 @@
 #include <WiFiClient.h>
 #include <HTTPClient.h>
 #include <math.h>
-bool stopFlag = false;      //FIXME: testing purposes
-HardwareSerial mySerial(2); // create 2nd serial instance for Pot/Galvanostat
+
+HardwareSerial potStat(2); // create 2nd serial instance for Pot/Galvanostat
 
 #ifndef STASSID //Wi-Fi Credentials
 //#define STASSID "ADB-CFF9A1"
@@ -14,11 +14,11 @@ HardwareSerial mySerial(2); // create 2nd serial instance for Pot/Galvanostat
 #define STAPSK "brg18f12"
 #endif
 
-#define POTENTIOSTATIC 0
-#define GALVANOSTATIC 1
-#define RANGE1 1
-#define RANGE2 2
-#define RANGE3 3
+#define POTENTIOSTATIC 1
+#define GALVANOSTATIC 0
+#define RANGE1 0
+#define RANGE2 1
+#define RANGE3 2
 
 const char *ssid = STASSID;
 const char *password = STAPSK;
@@ -40,12 +40,26 @@ struct cv_data
     unsigned long starttime;
 };
 
+long potential_offset;
+long current_offset;
+long dac_offset;
+long dac_gain;
+float shunt_calibration[] = {1.0, 1.0, 1.0};
+
+float potential;
+float current;
+
+char current_range = RANGE3;
+
+//FIXME: testing section
 cv_data cv_params = {-3000, 2000, 1000, -1000, 50, 2, 0};
+bool stopFlag = false;
+//FIXME: testing section
 
 void setup()
 {
-    Serial.begin(115200);                      // debug Serial
-    mySerial.begin(19200, SERIAL_8N1, 36, 26); // Pot/Galvanostat Serial
+    Serial.begin(115200);                     // debug Serial
+    potStat.begin(19200, SERIAL_8N1, 36, 26); // Pot/Galvanostat Serial
 
     WiFi.begin(ssid, password);
     Serial.println("");
@@ -102,31 +116,34 @@ void resolveServerRequest()
     responseString.toCharArray(buff, sizeof(buff));
     if (responseString == "CELL ON")
     {
-        cell_on();
+        set_cell_status(true);
     }
     else if (responseString == "CELL OFF")
     {
-        cell_off();
+        set_cell_status(false);
     }
     else if (responseString == "POTENTIOSTATIC")
     {
-        changeMode(POTENTIOSTATIC);
+        set_control_mode(POTENTIOSTATIC);
     }
     else if (responseString == "GALVANOSTATIC")
     {
-        changeMode(GALVANOSTATIC);
+        set_control_mode(GALVANOSTATIC);
     }
     else if (responseString == "RANGE1")
     {
-        setRange(RANGE1);
+        current_range = RANGE1;
+        set_current_range;
     }
     else if (responseString == "RANGE2")
     {
-        setRange(RANGE2);
+        current_range = RANGE2;
+        set_current_range;
     }
     else if (responseString == "RANGE3")
     {
-        setRange(RANGE3);
+        current_range = RANGE3;
+        set_current_range;
     }
     else if (strncmp(buff, "DACSET ", 7) == 0)
     {
@@ -135,31 +152,37 @@ void resolveServerRequest()
     }
     else if (responseString == "DACCAL")
     {
-        DACCal();
+        dac_auto_calibrate();
     }
     else if (responseString == "ADCREAD") //read data from ADC converters
     {
-        ADCread();
+        read_potential_current();
     }
     else if (responseString == "OFFSETREAD")
     {
-        OffsetRead();
+        get_offset();
     }
     else if (responseString == "OFFSETSAVE")
     {
-        OffsetSave();
+        set_offset(-86,-12); //FIXME: data from GUI
     }
     else if (responseString == "DACCALGET")
     {
-        DACCalGet();
+        get_dac_calibration();
     }
     else if (responseString == "DACCALSET")
     {
-        DACCalSet();
+        set_dac_calibration(-514936,528136); //FIXME: data from GUI
     }
     else if (responseString == "SHUNTCALREAD")
     {
-        ShuntCalRead();
+        /* //TODO: under construction !! 
+        //ShuntCalRead();
+        char twoBytes[2];
+        float floatingNum = 123456.789;
+        float_to_twobytes(floatingNum,&twoBytes[0],&twoBytes[1]);
+        Serial.println("Float number : "+String (twobytes_to_float(twoBytes[0],twoBytes[1])));
+        */
     }
     else if (responseString == "SHUNTCALSAVE")
     {
@@ -169,6 +192,11 @@ void resolveServerRequest()
     {
         //cv_sweep(1, -1, 5, -5, 100, 2); //startpot, endpot, upbound, lowbound, scanrate, numofscans
         run_cv();
+    }
+    else if(responseString=="test")
+    {   
+        Serial.print("Converting DAC bytes to decimal :");
+        Serial.println(DAC_bytes_to_decimal(8,56,28));
     }
     else
     {
@@ -194,7 +222,7 @@ int expectResponse(char *expResponse, int interval)
         {
             currentMillis = millis();
         }
-        if (mySerial.available())
+        if (potStat.available())
         {
             responded = true;
         }
@@ -205,14 +233,14 @@ int expectResponse(char *expResponse, int interval)
         char receivedResponse[10];
         uint8_t i = 0;
         uint8_t c;
-        while (mySerial.available())
+        while (potStat.available())
         {
-            c = mySerial.read();
+            c = potStat.read();
             while ((c != '\r') && (c != '\n') && (i < 9))
             {
                 receivedResponse[i] = c;
                 i++;
-                c = mySerial.read();
+                c = potStat.read();
             }
         }
         receivedResponse[i] = '\0';
@@ -240,7 +268,7 @@ int uartRead6Bytes(unsigned char *incomingData)
 {
     unsigned long nowTime = millis();
     bool timeout = false;
-    while (!mySerial.available() && !timeout)
+    while (!potStat.available() && !timeout)
     {
         if ((millis() - nowTime) > 50) //wait for 50ms in the loop for data reception
         {
@@ -248,82 +276,84 @@ int uartRead6Bytes(unsigned char *incomingData)
             return -1;
         }
     }
-    if (mySerial.available())
+    if (potStat.available())
     {
         for (int i = 0; i < 6; i++)
         {
-            incomingData[i] = mySerial.read();
+            incomingData[i] = potStat.read();
         }
     }
     else
         return -1;
 }
 
-void cell_on()
+void set_cell_status(bool cell_state)
 {
-    mySerial.print("CELL ON\n");
-    mySerial.flush();
-    Serial.println("command - CELL ON");
+    if (cell_state)
+    {
+        potStat.print("CELL ON\n");
+        Serial.println("command - CELL ON");
+    }
+    else
+    {
+        potStat.print("CELL OFF\n");
+        Serial.println("command - CELL OFF");
+    }
+    potStat.flush();
     expectResponse("OK", 50);
 }
 
-void cell_off()
+void set_control_mode(bool mode)
 {
-    mySerial.print("CELL OFF\n");
-    mySerial.flush();
-    Serial.println("command - CELL OFF");
-    expectResponse("OK", 50);
-}
-
-void changeMode(int command)
-{
-    if (command == POTENTIOSTATIC)
+    if (mode)
     {
         Serial.println("Potentiostatic mode");
-        mySerial.print("POTENTIOSTATIC\n");
-        expectResponse("OK", 50);
+        potStat.print("POTENTIOSTATIC\n");
     }
-    else if (command == GALVANOSTATIC)
+    else
     {
         Serial.println("Galvanostatic mode");
-        mySerial.print("GALVANOSTATIC\n");
-        expectResponse("OK", 50);
+        potStat.print("GALVANOSTATIC\n");
     }
+    expectResponse("OK", 50);
 }
 
-void setRange(int setRange)
+void set_current_range()
 {
-    if (setRange == RANGE1) //20mA //10R
+    if (current_range == RANGE1) //20mA //10R
     {
         Serial.println("Range1");
-        mySerial.print("RANGE 1\n");
-        expectResponse("OK", 50);
+        potStat.print("RANGE 1\n");
     }
-    else if (setRange == RANGE2) //200uA //1k
+    else if (current_range == RANGE2) //200uA //1k
     {
         Serial.println("Range2");
-        mySerial.print("RANGE 2\n");
-        expectResponse("OK", 50);
+        potStat.print("RANGE 2\n");
     }
-    else if (setRange == RANGE3) //2uA //100k
+    else if (current_range == RANGE3) //2uA //100k
     {
         Serial.println("Range3");
-        mySerial.print("RANGE 3\n");
-        expectResponse("OK", 50);
+        potStat.print("RANGE 3\n");
     }
+    expectResponse("OK", 50);
 }
 
-void ADCread()
+void read_potential_current()
 {
-    mySerial.print("ADCREAD\n"); //request data from ADC
+    potStat.print("ADCREAD\n"); //request data from ADC
     Serial.println("ADCREAD command");
     unsigned char uartData[6]; //readout data from ADC
     if (uartRead6Bytes(uartData) != -1)
     {
-        //jsonFormatter(uartData, sizeof(uartData)); // format data to JSON string
         if (strncmp((char *)uartData, "WAIT", 4) == 0)
         {
             Serial.println("Wait for ADC conversion");
+
+            for (int i = 0; i < 9; i++) //loop for some time and than read again if sample is ready
+            {
+                delay(10); //90ms should be enough for one whole conversion
+            }
+            read_potential_current();
         }
         else
         {
@@ -335,9 +365,12 @@ void ADCread()
                 Serial.print(" ");
             }
             Serial.println("");
-            //Serial.print("converted ADCdata : ");
-            Serial.println(ADCDataToVoltage(twoComplementToDecimal(uartData[0], uartData[1], uartData[2])));
-            Serial.println(ADCDataToVoltage(twoComplementToDecimal(uartData[3], uartData[4], uartData[5])));
+
+            long raw_potential(twocomplement_to_decimal(uartData[0], uartData[1], uartData[2]));
+            long raw_current(twocomplement_to_decimal(uartData[3], uartData[4], uartData[5]));
+
+            potential = (raw_potential - potential_offset) / 2097152.0 * 8.0;                                                             //calculate potential in V compensating for offset
+            current = (raw_current - current_offset) / 2097152.0 * 25.0 / pow((shunt_calibration[current_range] * 100.0), current_range); //calculate current in mA, taking current range into account and compensating for offset
         }
     }
     else
@@ -346,21 +379,27 @@ void ADCread()
     }
 }
 
-void OffsetRead() //Read 6 offset bytes from flash, bytes [0:3] = potential offset , bytes [4:60] = current offset
+void get_offset() //Read 6 offset bytes from flash, bytes [0:3] = potential offset , bytes [4:6] = current offset
 {
-    mySerial.print("OFFSETREAD\n");
-    mySerial.flush();
-    Serial.println("OFFSETREAD command");
+    potStat.print("OFFSETREAD\n");
+    potStat.flush();
+    Serial.println("command - OFFSETREAD");
     unsigned char uartData[6];
     if (uartRead6Bytes(uartData) != -1)
     {
-        Serial.println("OFFSET DATA :");
-        for (int i = 0; i < 6; i++)
+        if ((uartData[0] & uartData[1] & uartData[2] & uartData[3] & uartData[4] & uartData[5]) != 255) // if no offset values has been stored, all bits will be set
         {
-            Serial.print(uartData[i]);
-            Serial.print(" ");
+            potential_offset = DAC_bytes_to_decimal(uartData[0], uartData[1], uartData[2]);
+            current_offset = DAC_bytes_to_decimal(uartData[3], uartData[4], uartData[5]);
+            Serial.println("Offset values were read from flash memory");
+            Serial.println("Potential offset : " +String(potential_offset));
+            Serial.println("Current offset : " +String(current_offset));
+
         }
-        Serial.println("");
+        else
+        {
+            Serial.println("No offset values were found in flash memory");
+        }
     }
     else
     {
@@ -368,77 +407,92 @@ void OffsetRead() //Read 6 offset bytes from flash, bytes [0:3] = potential offs
     }
 }
 
-void OffsetSave()
+void set_offset(long potOff, long currOff) //Set 6 offset bytes to flash, bytes [0:3] = potential offset , bytes [4:6] = current offset
 {
-    uint8_t OffsetData[6];
-    OffsetData[0] = 0;
+    char offsetByte[6];
+    decimal_to_dac_bytes(potOff,&offsetByte[0],&offsetByte[1],&offsetByte[2]); //MSB first
+    decimal_to_dac_bytes(currOff,&offsetByte[3],&offsetByte[4],&offsetByte[5]); //MSB firs
+
     Serial.println("OFFSETSAVE command");
-    mySerial.print("OFFSETSAVE ");
+    potStat.print("OFFSETSAVE ");
     for (int i = 0; i < 6; i++)
     {
-        mySerial.write(OffsetData[0]);
+        potStat.write(offsetByte[i]);
     }
-    mySerial.print("\n");
-    mySerial.flush();
+    potStat.print("\n");
+    potStat.flush();
     expectResponse("OK", 50);
 }
 
-void DACCalGet()
+void get_dac_calibration()
 {
-    mySerial.print("DACCALGET\n");
-    mySerial.flush();
+    potStat.print("DACCALGET\n");
+    potStat.flush();
     Serial.println("DACCALGET command");
     unsigned char uartData[6];
     uartRead6Bytes(uartData);
 
+    if ((uartData[0] & uartData[1] & uartData[2] & uartData[3] & uartData[4] & uartData[5]) != 255) // if no offset values has been stored, all bits will be set
+    {
+        dac_offset = DAC_bytes_to_decimal(uartData[0],uartData[1],uartData[2]);
+        dac_gain = DAC_bytes_to_decimal(uartData[3],uartData[4],uartData[5]) + (1<<19);
+        Serial.println("DAC offset value : "+ String(dac_offset));
+        Serial.println("DAC gain valuie : "+String(dac_gain));
+    }
+    else
+    {
+        Serial.println("No offset values were found in flash memory");
+    }
+    
+
+}
+
+void set_dac_calibration(long offset, long gain)
+{
+    char calByte[6];
+    Serial.println("DACCALSET command");
+    decimal_to_dac_bytes(offset,&calByte[0],&calByte[1],&calByte[2]);
+    decimal_to_dac_bytes((gain-(1<<19)),&calByte[3],&calByte[4],&calByte[5]);
+    
+    potStat.print("DACCALSET ");
     for (int i = 0; i < 6; i++)
     {
-        Serial.print(uartData[i]);
-    TODO: //put data to JSON format and send to server
-        Serial.print(" ");
+        potStat.write(calByte[i]);
     }
-    Serial.println("");
+    potStat.print("\n");
+    potStat.flush();
+    expectResponse("OK", 50);
 }
 
 void DACset(long rawVal) //send 3bytes of raw DAC data MSB first
 {
     char DACbyte1, DACbyte2, DACbyte3;
     decimal_to_dac_bytes(rawVal, &DACbyte1, &DACbyte2, &DACbyte3);
-    mySerial.print("DACSET ");
-    mySerial.print(DACbyte1);
-    mySerial.print(DACbyte2);
-    mySerial.print(DACbyte3);
-    mySerial.print("\n");
+    potStat.print("DACSET ");
+    potStat.print(DACbyte1);
+    potStat.print(DACbyte2);
+    potStat.print(DACbyte3);
+    potStat.print("\n");
     Serial.println("command - DACSET");
     expectResponse("OK", 50);
 }
 
-void DACCal()
+
+
+void dac_auto_calibrate()
 {
-    Serial.println("command - DACCal");
-    mySerial.print("DACCAL\n");
+    Serial.println("command - DAC auto calibrate");
+    potStat.print("DACCAL\n");
     expectResponse("OK", 600);
+    get_dac_calibration();
 }
 
-void DACCalSet()
-{
-    int CalData[6];
-    CalData[0] = 0;
-    Serial.println("DACCALSET command");
-    mySerial.print("DACCALSET ");
-    for (int i = 0; i < 6; i++)
-    {
-        mySerial.write(CalData[0]);
-    }
-    mySerial.print("\n");
-    mySerial.flush();
-    expectResponse("OK", 50);
-}
+
 
 void ShuntCalRead()
 {
-    mySerial.print("SHUNTCALREAD\n");
-    mySerial.flush();
+    potStat.print("SHUNTCALREAD\n");
+    potStat.flush();
     Serial.println("SHUNTCALREAD command");
     unsigned char uartData[6];
     uartRead6Bytes(uartData);
@@ -456,17 +510,17 @@ void ShuntCalSave()
     int ShuntCalData[6];
     ShuntCalData[0] = 0;
     Serial.println("SHUNTCALSAVE command");
-    mySerial.print("SHUNTCALSAVE ");
+    potStat.print("SHUNTCALSAVE ");
     for (int i = 0; i < 6; i++)
     {
-        mySerial.write(ShuntCalData[0]);
+        potStat.write(ShuntCalData[0]);
     }
-    mySerial.print("\n");
-    mySerial.flush();
+    potStat.print("\n");
+    potStat.flush();
     expectResponse("OK", 50);
 }
 
-void decimal_to_dac_bytes(long value, char *byte1, char *byte2, char *byte3) // Working like a charm
+void decimal_to_dac_bytes(long value, char *msb, char *mid, char *lsb) // Working like a charm
 {
     //Convert a floating-point number, ranging from -2**19 to 2**19-1, to three data bytes in the proper format for the DAC1220.
     long code = (1 << 19) + (long)value; // Convert the (signed) input value to an unsigned 20-bit integer with zero at midway ((1<<19) +
@@ -478,13 +532,44 @@ void decimal_to_dac_bytes(long value, char *byte1, char *byte2, char *byte3) // 
     Serial.print("Code : ");
     Serial.println(code);
     code = code << 4;
-    *byte1 = (code & 0x00FF0000) >> 16;
-    *byte2 = (code & 0x0000FF00) >> 8;
-    *byte3 = (code & 0x000000FF);
+    *msb = (code & 0x00FF0000) >> 16;  //MSB
+    *mid = (code & 0x0000FF00) >> 8;
+    *lsb = (code & 0x000000FF);   //LSB
 }
 
-long twoComplementToDecimal(int msb, int middlebyte, int lsb) // Working like a charm
-{                                                             // Convert a 22-bit two-complement ADC value consisting of three bytes to a signed integer
+long DAC_bytes_to_decimal(char byte2, char byte1, char byte0)
+{
+    long code = ((long)byte2<<16);
+    code = code | ((long)byte1<<8);
+    code = code | byte0;
+    code = code >> 4;
+    code = code & 0x00FFFFFF;
+    return code - (1<<19);
+}
+
+/* //TODO: under construction!!
+
+void float_to_twobytes(float value, char *byte0, char *byte1) // two calibration bytes per one shunt resistor
+{   
+    long code = (1<<15) + int(round(value)) ;    //Convert two bytes to a number ranging from -2^15 to 2^15-1.
+
+    if(code > ((1 << 16) - 1)) //clip the values to be within 16bit value
+        code = (1<<16)-1;
+    else if (code < 0)
+        code = 0;
+
+    *byte0 = (code & 0xFF00)>>8;
+    *byte1 = (code & 0x00FF);    
+}
+
+float twobytes_to_float(char byte0, char byte1)
+{
+    float code = (byte0 << 8) + byte1;
+    return (float)code - (1<<15);
+}
+*/
+long twocomplement_to_decimal(int msb, int middlebyte, int lsb) // Working like a charm
+{                                                               // Convert a 22-bit two-complement ADC value consisting of three bytes to a signed integer
     bool ovh = false;
     bool ovl = false;
     long answer;
@@ -598,9 +683,10 @@ void cv_start_setup()
 {
     cv_params.starttime = millis();
     DACset(cv_params.ustart);
-    changeMode(POTENTIOSTATIC);
-    setRange(RANGE3);
-    cell_on();
+    set_control_mode(POTENTIOSTATIC);
+    current_range = RANGE3;
+    set_current_range;
+    set_cell_status(true);
 }
 
 bool valiadate_parameters()
@@ -645,13 +731,13 @@ bool valiadate_parameters()
 }
 
 int cv_sweep(unsigned long time_elapsed, int ustart, int ustop, int ubound, int lbound, int scanrate, int n) //Works like a charm
-// ustart -- start potential [mV]
-// ustop -- stop potential  [mV]
-// ubound -- upper potential bound  [mV]
-// lbound -- lower potential bound  [mV]
-// scanrate -- scanrate in mV/s
-// n -- number of scans
 {
+    // ustart -- start potential [mV]
+    // ustop -- stop potential  [mV]
+    // ubound -- upper potential bound  [mV]
+    // lbound -- lower potential bound  [mV]
+    // scanrate -- scanrate in mV/s
+    // n -- number of scans
     int srt0 = ubound - ustart;           // Potential difference in initial stage  :  Start --> Upper boundary
     int srt1 = (ubound - lbound) * 2 * n; //Potential difference in cyclic stage :  (Lower boundary --> upper boundary) * 2 * number of scans
     int srt2 = abs(ustop - ubound);       // Potential difference in final stage : (Upper boundary -- > Stop)
@@ -707,7 +793,7 @@ void cv_update()
 
 void cv_stop()
 {
-    cell_off();
+    set_cell_status(false);
 }
 
 double ADCDataToVoltage(long ADCvoltage)

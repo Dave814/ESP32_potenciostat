@@ -15,7 +15,8 @@
         "iosfwd": "cpp",
         "new": "cpp",
         "sstream": "cpp",
-        "streambuf": "cpp"
+        "streambuf": "cpp",
+        "cmath": "c"
     },
     "C_Cpp.errorSquiggles": "Enabled"
 }
