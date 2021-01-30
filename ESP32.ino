@@ -44,7 +44,7 @@ long potential_offset;
 long current_offset;
 long dac_offset;
 long dac_gain;
-float shunt_calibration[] = {1.0, 1.0, 1.0};
+float shunt_calibration[] = {1.01234, 0.998, 1.02300}; //0.967 to 1.033
 
 float potential;
 float current;
@@ -54,6 +54,7 @@ char current_range = RANGE3;
 //FIXME: testing section
 cv_data cv_params = {-3000, 2000, 1000, -1000, 50, 2, 0};
 bool stopFlag = false;
+float fiddler = 0.001;
 //FIXME: testing section
 
 void setup()
@@ -176,13 +177,14 @@ void resolveServerRequest()
     }
     else if (responseString == "SHUNTCALREAD")
     {
-        /* //TODO: under construction !! 
-        //ShuntCalRead();
-        char twoBytes[2];
-        float floatingNum = 123456.789;
+        
+        ShuntCalRead();
+        /*char twoBytes[2];
+        float floatingNum = 1.012345;
         float_to_twobytes(floatingNum,&twoBytes[0],&twoBytes[1]);
-        Serial.println("Float number : "+String (twobytes_to_float(twoBytes[0],twoBytes[1])));
+        Serial.println("Float number : "+String (twobytes_to_float(twoBytes[0],twoBytes[1]),5));
         */
+        
     }
     else if (responseString == "SHUNTCALSAVE")
     {
@@ -494,26 +496,37 @@ void ShuntCalRead()
     potStat.print("SHUNTCALREAD\n");
     potStat.flush();
     Serial.println("SHUNTCALREAD command");
-    unsigned char uartData[6];
-    uartRead6Bytes(uartData);
-    Serial.println("SHUNTCAL Data :");
-    for (int i = 0; i < 6; i++)
-    {
-        Serial.print(uartData[i]);
-        Serial.print(" ");
-    }
-    Serial.println("");
+    unsigned char shuntCalBytes[6];
+    uartRead6Bytes(shuntCalBytes);
+    shunt_calibration[0]=twobytes_to_float(shuntCalBytes[0],shuntCalBytes[1]);
+    shunt_calibration[1]=twobytes_to_float(shuntCalBytes[2],shuntCalBytes[3]);
+    shunt_calibration[2]=twobytes_to_float(shuntCalBytes[4],shuntCalBytes[5]);
+    Serial.print("Shunt Cal1 : ");
+    Serial.println(shunt_calibration[0],5);
+    Serial.print("Shunt Cal2 : ");
+    Serial.println(shunt_calibration[1],5);
+    Serial.print("Shunt Cal3 : ");
+    Serial.println(shunt_calibration[2],5);
 }
 
 void ShuntCalSave()
-{
-    int ShuntCalData[6];
-    ShuntCalData[0] = 0;
+{  
+     char shuntCalBytes[6];
+    float_to_twobytes(shunt_calibration[0]+fiddler,&shuntCalBytes[0],&shuntCalBytes[1]);
+    float_to_twobytes(shunt_calibration[1],&shuntCalBytes[2],&shuntCalBytes[3]);
+    float_to_twobytes(shunt_calibration[2],&shuntCalBytes[4],&shuntCalBytes[5]);
+    
     Serial.println("SHUNTCALSAVE command");
+    Serial.print("Shunt Cal1 : ");
+    Serial.println(shunt_calibration[0],5);
+    Serial.print("Shunt Cal2 : ");
+    Serial.println(shunt_calibration[1],5);
+    Serial.print("Shunt Cal3 : ");
+    Serial.println(shunt_calibration[2],5);
     potStat.print("SHUNTCALSAVE ");
     for (int i = 0; i < 6; i++)
     {
-        potStat.write(ShuntCalData[0]);
+        potStat.write(shuntCalBytes[i]);
     }
     potStat.print("\n");
     potStat.flush();
@@ -547,27 +560,28 @@ long DAC_bytes_to_decimal(char byte2, char byte1, char byte0)
     return code - (1<<19);
 }
 
-/* //TODO: under construction!!
+
 
 void float_to_twobytes(float value, char *byte0, char *byte1) // two calibration bytes per one shunt resistor
 {   
-    long code = (1<<15) + int(round(value)) ;    //Convert two bytes to a number ranging from -2^15 to 2^15-1.
-
+    // note -- takes number from ().0976 to 1.033 ) -1.000
+    long code = int(round((value - 1.0000 ) * 1000000)); 
+    code = code + (1 << 15);
     if(code > ((1 << 16) - 1)) //clip the values to be within 16bit value
         code = (1<<16)-1;
     else if (code < 0)
         code = 0;
+    *byte0 = (code & 0x0000FF00)>>8;
+    *byte1 = (code & 0x000000FF); 
 
-    *byte0 = (code & 0xFF00)>>8;
-    *byte1 = (code & 0x00FF);    
 }
 
 float twobytes_to_float(char byte0, char byte1)
 {
     float code = (byte0 << 8) + byte1;
-    return (float)code - (1<<15);
+    return (((float)code - (1<<15))/1000000)+1.00000;
 }
-*/
+
 long twocomplement_to_decimal(int msb, int middlebyte, int lsb) // Working like a charm
 {                                                               // Convert a 22-bit two-complement ADC value consisting of three bytes to a signed integer
     bool ovh = false;
