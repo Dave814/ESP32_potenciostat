@@ -2,5 +2,5 @@
     "sketch": "ESP32.ino",
     "port": "COM4",
     "board": "esp32:esp32:m5stick-c",
-    "configuration": "PartitionScheme=default,UploadSpeed=1500000,DebugLevel=none"
+    "configuration": "PartitionScheme=default,UploadSpeed=1500000,DebugLevel=info"
 }

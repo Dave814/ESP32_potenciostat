@@ -8,6 +8,15 @@
         "vector": "cpp",
         "initializer_list": "cpp",
         "*.tcc": "cpp",
-        "system_error": "cpp"
-    }
+        "system_error": "cpp",
+        "ostream": "cpp",
+        "exception": "cpp",
+        "fstream": "cpp",
+        "iosfwd": "cpp",
+        "new": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "cmath": "c"
+    },
+    "C_Cpp.errorSquiggles": "Enabled"
 }
