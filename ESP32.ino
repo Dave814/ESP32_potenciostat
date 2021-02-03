@@ -5,6 +5,7 @@
 #include <HTTPClient.h>
 #include <math.h>
 
+
 HardwareSerial potStat(2); // create 2nd serial instance for Pot/Galvanostat
 
 #ifndef STASSID //Wi-Fi Credentials
@@ -19,15 +20,14 @@ HardwareSerial potStat(2); // create 2nd serial instance for Pot/Galvanostat
 #define RANGE1 0
 #define RANGE2 1
 #define RANGE3 2
+#define interval 2000 //check for instructions every 2 seconds
 
 const char *ssid = STASSID;
 const char *password = STAPSK;
 const char *serverName = "http://192.168.0.200:1880/espTest";
+const char *dataServer = "http://192.168.0.200:1880/espData";
 
 HTTPClient http;
-
-unsigned long oldTime = 0;
-int interval = 2000;
 
 struct cv_data
 {
@@ -40,21 +40,20 @@ struct cv_data
     unsigned long starttime;
 };
 
+float potential;
+float current;
 long potential_offset;
 long current_offset;
 long dac_offset;
 long dac_gain;
-float shunt_calibration[] = {1.01234, 0.998, 1.02300}; //0.967 to 1.033
+float shunt_calibration[] = {1.0000, 1.0000, 1.0000}; //0.967 to 1.033
+char current_range = RANGE2;
 
-float potential;
-float current;
-
-char current_range = RANGE3;
+unsigned long oldTime = 0; 
 
 //FIXME: testing section
-cv_data cv_params = {-3000, 2000, 1000, -1000, 50, 2, 0};
+cv_data cv_params = {0, 0, 2000, -2000, 50, 2, 0};
 bool stopFlag = false;
-float fiddler = 0.001;
 //FIXME: testing section
 
 void setup()
@@ -66,8 +65,8 @@ void setup()
     Serial.println("");
 
     // Wait for connection
-    int connectionCounter = 0;
-    while (WiFi.status() != WL_CONNECTED)
+    uint8_t connectionCounter = 0;
+    while (WiFi.status() != WL_CONNECTED)  // Reboot if not connected in 5seconds... softBug ? 
     {
         delay(500);
         Serial.print(".");
@@ -78,12 +77,18 @@ void setup()
             ESP.restart();
         }
     }
-
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(ssid);
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
+
+    //String jsonPayload = "{{\"1\":\"5\"},{\"2\":\"6\"}}";
+
+    //http.begin(dataServer);
+    //http.addHeader("Content-Type", "application/json");
+   // http.POST(jsonPayload);
+    // http.end();
 
     http.begin(serverName);
     http.addHeader("Content-Type", "application/json");
@@ -91,10 +96,10 @@ void setup()
 
 void loop(void)
 {
-    if (oldTime + interval <= millis())
-    { // once per second check if server has some commands
+    if (oldTime + interval <= millis()) // once per 2 seconds check if server has some commands
+    { 
         Serial.println("requesting server commands");
-        int resp = http.GET();
+        int8_t resp = http.GET();
         Serial.print("Response from server : ");
         Serial.println(resp);
         if (resp == 200)
@@ -109,13 +114,14 @@ void loop(void)
         oldTime = millis();
     }
 }
-//TODO: change the way commands are received. Change the string to hex number. i.e. : CELL ON = 0x01;
-void resolveServerRequest()
+
+void resolveServerRequest() //TODO: change the way commands are received. Change the string to hex number. i.e. : CELL ON = 0x01;
 {
     String responseString = http.getString(); // read server response
     char buff[20];
     responseString.toCharArray(buff, sizeof(buff));
-    if (responseString == "CELL ON")
+   
+    if (responseString == "CELL ON")    //will be changed to switch case construction 
     {
         set_cell_status(true);
     }
@@ -134,30 +140,34 @@ void resolveServerRequest()
     else if (responseString == "RANGE1")
     {
         current_range = RANGE1;
-        set_current_range;
+        set_current_range();
     }
     else if (responseString == "RANGE2")
     {
         current_range = RANGE2;
-        set_current_range;
+        set_current_range();
     }
     else if (responseString == "RANGE3")
     {
         current_range = RANGE3;
-        set_current_range;
+        set_current_range();
     }
     else if (strncmp(buff, "DACSET ", 7) == 0)
     {
         long DACdata = atoi(&buff[7]);
-        DACset(DACdata);
+        set_output(DACdata,true);
     }
     else if (responseString == "DACCAL")
     {
         dac_auto_calibrate();
     }
-    else if (responseString == "ADCREAD") //read data from ADC converters
+    else if (responseString == "ADCREAD") //read data from ADC converters 3x2bytes
     {
         read_potential_current();
+        Serial.print(potential,5);
+        Serial.print("    ");
+        Serial.print(current,10);
+        Serial.println(" ");
     }
     else if (responseString == "OFFSETREAD")
     {
@@ -176,15 +186,8 @@ void resolveServerRequest()
         set_dac_calibration(-514936,528136); //FIXME: data from GUI
     }
     else if (responseString == "SHUNTCALREAD")
-    {
-        
-        ShuntCalRead();
-        /*char twoBytes[2];
-        float floatingNum = 1.012345;
-        float_to_twobytes(floatingNum,&twoBytes[0],&twoBytes[1]);
-        Serial.println("Float number : "+String (twobytes_to_float(twoBytes[0],twoBytes[1]),5));
-        */
-        
+    {     
+        ShuntCalRead();     
     }
     else if (responseString == "SHUNTCALSAVE")
     {
@@ -192,13 +195,11 @@ void resolveServerRequest()
     }
     else if (strncmp(buff, "CV ", 3) == 0)
     {
-        //cv_sweep(1, -1, 5, -5, 100, 2); //startpot, endpot, upbound, lowbound, scanrate, numofscans
         run_cv();
     }
     else if(responseString=="test")
     {   
-        Serial.print("Converting DAC bytes to decimal :");
-        Serial.println(DAC_bytes_to_decimal(8,56,28));
+        //testing section for new functions
     }
     else
     {
@@ -206,7 +207,7 @@ void resolveServerRequest()
     }
 }
 
-int expectResponse(char *expResponse, int interval)
+int expectResponse(char *expResponse, int max_response_time)
 {
     bool timeout = false;
     bool responded = false;
@@ -215,7 +216,7 @@ int expectResponse(char *expResponse, int interval)
 
     while (!timeout && !responded)
     {
-        if (currentMillis - previousMillis >= interval)
+        if (currentMillis - previousMillis >= max_response_time)
         {
             responded = false;
             timeout = true;
@@ -246,16 +247,16 @@ int expectResponse(char *expResponse, int interval)
             }
         }
         receivedResponse[i] = '\0';
-        Serial.print("Received response : ");
-        Serial.println(receivedResponse);
         if (strncmp(receivedResponse, expResponse, 2) == 0)
         {
-            Serial.println("Response OK");
+            //Serial.println("Response OK");
             return 0;
         }
         else
         {
             Serial.println("Response !OK");
+            Serial.print("Received response : ");
+            Serial.println(receivedResponse);
             return -1;
         }
     }
@@ -343,7 +344,7 @@ void set_current_range()
 void read_potential_current()
 {
     potStat.print("ADCREAD\n"); //request data from ADC
-    Serial.println("ADCREAD command");
+    //Serial.println("ADCREAD command");
     unsigned char uartData[6]; //readout data from ADC
     if (uartRead6Bytes(uartData) != -1)
     {
@@ -359,20 +360,12 @@ void read_potential_current()
         }
         else
         {
-            Serial.println("Here is ADC data :"); // here <-- 6bytes of ADC data is ready to send !
-            for (int i = 0; i < 6; i++)
-            {
-                Serial.print(uartData[i], HEX); //print out 6 received ADC bytes
-                // TODO:put data to JSON format and send to server
-                Serial.print(" ");
-            }
-            Serial.println("");
-
             long raw_potential(twocomplement_to_decimal(uartData[0], uartData[1], uartData[2]));
             long raw_current(twocomplement_to_decimal(uartData[3], uartData[4], uartData[5]));
 
             potential = (raw_potential - potential_offset) / 2097152.0 * 8.0;                                                             //calculate potential in V compensating for offset
             current = (raw_current - current_offset) / 2097152.0 * 25.0 / pow((shunt_calibration[current_range] * 100.0), current_range); //calculate current in mA, taking current range into account and compensating for offset
+            //FIXME: two samples after range change must be discareded !!!! 
         }
     }
     else
@@ -466,20 +459,21 @@ void set_dac_calibration(long offset, long gain)
     expectResponse("OK", 50);
 }
 
-void DACset(long rawVal) //send 3bytes of raw DAC data MSB first
+void set_output(long value,bool volts) //set output in volts
 {
     char DACbyte1, DACbyte2, DACbyte3;
-    decimal_to_dac_bytes(rawVal, &DACbyte1, &DACbyte2, &DACbyte3);
+    //Serial.println("Received value : "+ String(value));
+    float calculatedVal = ((value/1000.0) / 8.0 * pow(2,19))+int(round((float)potential_offset/4.0));
+    //Serial.println("calulated value : "+ String(calculatedVal));
+    decimal_to_dac_bytes(calculatedVal, &DACbyte1, &DACbyte2, &DACbyte3);
     potStat.print("DACSET ");
-    potStat.print(DACbyte1);
+    potStat.print(DACbyte1);    //send 3bytes of raw DAC data MSB first
     potStat.print(DACbyte2);
     potStat.print(DACbyte3);
     potStat.print("\n");
-    Serial.println("command - DACSET");
+    //Serial.println("command - DACSET");
     expectResponse("OK", 50);
 }
-
-
 
 void dac_auto_calibrate()
 {
@@ -488,8 +482,6 @@ void dac_auto_calibrate()
     expectResponse("OK", 600);
     get_dac_calibration();
 }
-
-
 
 void ShuntCalRead()
 {
@@ -501,28 +493,16 @@ void ShuntCalRead()
     shunt_calibration[0]=twobytes_to_float(shuntCalBytes[0],shuntCalBytes[1]);
     shunt_calibration[1]=twobytes_to_float(shuntCalBytes[2],shuntCalBytes[3]);
     shunt_calibration[2]=twobytes_to_float(shuntCalBytes[4],shuntCalBytes[5]);
-    Serial.print("Shunt Cal1 : ");
-    Serial.println(shunt_calibration[0],5);
-    Serial.print("Shunt Cal2 : ");
-    Serial.println(shunt_calibration[1],5);
-    Serial.print("Shunt Cal3 : ");
-    Serial.println(shunt_calibration[2],5);
 }
 
 void ShuntCalSave()
 {  
      char shuntCalBytes[6];
-    float_to_twobytes(shunt_calibration[0]+fiddler,&shuntCalBytes[0],&shuntCalBytes[1]);
+    float_to_twobytes(shunt_calibration[0],&shuntCalBytes[0],&shuntCalBytes[1]);
     float_to_twobytes(shunt_calibration[1],&shuntCalBytes[2],&shuntCalBytes[3]);
     float_to_twobytes(shunt_calibration[2],&shuntCalBytes[4],&shuntCalBytes[5]);
     
     Serial.println("SHUNTCALSAVE command");
-    Serial.print("Shunt Cal1 : ");
-    Serial.println(shunt_calibration[0],5);
-    Serial.print("Shunt Cal2 : ");
-    Serial.println(shunt_calibration[1],5);
-    Serial.print("Shunt Cal3 : ");
-    Serial.println(shunt_calibration[2],5);
     potStat.print("SHUNTCALSAVE ");
     for (int i = 0; i < 6; i++)
     {
@@ -533,17 +513,17 @@ void ShuntCalSave()
     expectResponse("OK", 50);
 }
 
-void decimal_to_dac_bytes(long value, char *msb, char *mid, char *lsb) // Working like a charm
+void decimal_to_dac_bytes(float value, char *msb, char *mid, char *lsb) // Working like a charm
 {
     //Convert a floating-point number, ranging from -2**19 to 2**19-1, to three data bytes in the proper format for the DAC1220.
-    long code = (1 << 19) + (long)value; // Convert the (signed) input value to an unsigned 20-bit integer with zero at midway ((1<<19) +
+    long code = (1 << 19) + int(round((long)value)); // Convert the (signed) input value to an unsigned 20-bit integer with zero at midway ((1<<19) +
     if (code > ((1 << 20) - 1))          // crop the code if it is not within 20bytes
         code = (1 << 20) - 1;
     else if (code < 0)
         code = 0;
 
-    Serial.print("Code : ");
-    Serial.println(code);
+    //Serial.print("Code : ");
+    //Serial.println(code);
     code = code << 4;
     *msb = (code & 0x00FF0000) >> 16;  //MSB
     *mid = (code & 0x0000FF00) >> 8;
@@ -560,9 +540,7 @@ long DAC_bytes_to_decimal(char byte2, char byte1, char byte0)
     return code - (1<<19);
 }
 
-
-
-void float_to_twobytes(float value, char *byte0, char *byte1) // two calibration bytes per one shunt resistor
+void float_to_twobytes(float value, char *byte0, char *byte1) // two calibration bytes per one shunt resistor, working like a charm
 {   
     // note -- takes number from ().0976 to 1.033 ) -1.000
     long code = int(round((value - 1.0000 ) * 1000000)); 
@@ -576,7 +554,7 @@ void float_to_twobytes(float value, char *byte0, char *byte1) // two calibration
 
 }
 
-float twobytes_to_float(char byte0, char byte1)
+float twobytes_to_float(char byte0, char byte1) //working like a charm
 {
     float code = (byte0 << 8) + byte1;
     return (((float)code - (1<<15))/1000000)+1.00000;
@@ -620,8 +598,8 @@ long twocomplement_to_decimal(int msb, int middlebyte, int lsb) // Working like 
             answer = combined_value;
         }
     }
-    Serial.print("ADC Answer : ");
-    Serial.println(answer);
+    //Serial.print("ADC Answer : ");
+    //Serial.println(answer);
     return answer;
 }
 /*
@@ -663,7 +641,7 @@ int autorange(int current) //return num of measurements to skip to suppress arti
     else return 0;
 }
 */
-int current_range_from_current(float current)
+int current_range_from_current()
 {
     current = abs(current);
     if (current <= 0.002)
@@ -680,7 +658,7 @@ int current_range_from_current(float current)
     }
 }
 
-void run_cv()
+void run_cv() 
 {
     if (valiadate_parameters())
     {
@@ -693,14 +671,16 @@ void run_cv()
     }
 }
 
-void cv_start_setup()
+void cv_start_setup() // get ready for cv measurement
 {
     cv_params.starttime = millis();
-    DACset(cv_params.ustart);
+    set_output(cv_params.ustart,true);
     set_control_mode(POTENTIOSTATIC);
-    current_range = RANGE3;
-    set_current_range;
+    current_range = RANGE2; // middle range - possible to start with highest range 
+    set_current_range();
     set_cell_status(true);
+    read_potential_current(); //read out two samples and discard them
+    read_potential_current();
 }
 
 bool valiadate_parameters()
@@ -720,21 +700,21 @@ bool valiadate_parameters()
         Serial.println("For a positive scan rate, the start potential must be lower than the upper bound");
         return false;
     }
-    else if ((cv_params.ubound > 8.000) || (cv_params.ubound < -8.000))
+    else if ((cv_params.ubound > 8000) || (cv_params.ubound < -8000))
     {
         Serial.println("Upper bound is outside interval");
         return false;
     }
-    else if ((cv_params.lbound > 8.000) || (cv_params.lbound < -8.000))
+    else if ((cv_params.lbound > 8000) || (cv_params.lbound < -8000))
     {
         Serial.println("Lower bound is outside interval");
     }
-    else if ((cv_params.ustart > 8.000) || (cv_params.ustart < -8.000))
+    else if ((cv_params.ustart > 8000) || (cv_params.ustart < -8000))
     {
         Serial.println("Start potential is outside interval");
         return false;
     }
-    else if ((cv_params.ustop > 8.000) || (cv_params.ustop < -8.000))
+    else if ((cv_params.ustop > 8000) || (cv_params.ustop < -8000))
     {
         Serial.println("Stop potential is outside interval");
         return false;
@@ -756,7 +736,7 @@ int cv_sweep(unsigned long time_elapsed, int ustart, int ustop, int ubound, int 
     int srt1 = (ubound - lbound) * 2 * n; //Potential difference in cyclic stage :  (Lower boundary --> upper boundary) * 2 * number of scans
     int srt2 = abs(ustop - ubound);       // Potential difference in final stage : (Upper boundary -- > Stop)
 
-    int srtime = scanrate * time_elapsed / 1000; // Actual potential in mV vs time
+    long srtime = scanrate * time_elapsed / 1000; // Actual potential in mV vs time
 
     if (srtime < srt0) //Initial stage
     {
@@ -781,49 +761,32 @@ int cv_sweep(unsigned long time_elapsed, int ustart, int ustop, int ubound, int 
     }
     else
     {
-        return NULL; //CV finished
+        stopFlag=true;; //CV finished
     }
 }
 
 void cv_update()
 {
     long elapsed_time = millis() - cv_params.starttime;
-    int cv_output = cv_sweep(elapsed_time, cv_params.ustart, cv_params.ustop, cv_params.ubound, cv_params.lbound, cv_params.scanrate, cv_params.n);
+    long cv_output = cv_sweep(elapsed_time, cv_params.ustart, cv_params.ustop, cv_params.ubound, cv_params.lbound, cv_params.scanrate, cv_params.n);
 
-    if (cv_output == NULL)
+    if (stopFlag)
     {
-        stopFlag = true;
         cv_stop();
     }
     else
-    { /*//FIXME: only for testing purposes!!!!
-        DACset(cv_output); //FIXME: passing voltage instead of DAC code
-        ADCread();*/
-        DACset(voltage_to_DACcode(cv_output));
-
-        Serial.println(cv_output);
+    {
+        set_output(cv_output,true);
+        read_potential_current();
+        Serial.print(potential,5);
+        Serial.print("    ");
+        Serial.print(current,10);
+        Serial.println(" ");
     }
 }
 
-void cv_stop()
+void cv_stop() // set device to idle settings
 {
     set_cell_status(false);
-}
-
-double ADCDataToVoltage(long ADCvoltage)
-{
-    float potOffset = 0.000;
-    double voltage = ((double)ADCvoltage - potOffset) / 2097152.000 * 8.000;
-    return voltage;
-}
-/*
-long ADCDataToCurrent(long ADCcurrent)
-{
-    int currOffset = 0;
-    long current = ADCcurrent-currOffset)/(2097152*25)/(shuntCalibration[currentRange]*100**currentrange);
-    return current;
-}*/
-
-int voltage_to_DACcode(int voltage)
-{
+    set_output(0,1); 
 }
