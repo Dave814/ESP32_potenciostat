@@ -1,3 +1,5 @@
+#include <ArduinoJson.h>
+
 #include <M5StickC.h>
 #include <RTC.h>
 #include <WiFi.h>
@@ -5,6 +7,11 @@
 #include <HTTPClient.h>
 #include <math.h>
 
+// dev branch
+
+StaticJsonDocument<3000> jsonData;
+JsonArray Jvolt = jsonData.createNestedArray("Voltage");
+JsonArray Jcurr = jsonData.createNestedArray("Current");
 
 HardwareSerial potStat(2); // create 2nd serial instance for Pot/Galvanostat
 
@@ -21,11 +28,12 @@ HardwareSerial potStat(2); // create 2nd serial instance for Pot/Galvanostat
 #define RANGE2 1
 #define RANGE3 2
 #define interval 2000 //check for instructions every 2 seconds
+#define numSamplesToSend 500
 
 const char *ssid = STASSID;
 const char *password = STAPSK;
 const char *serverName = "http://192.168.0.200:1880/espTest";
-const char *dataServer = "http://192.168.0.200:1880/espData";
+const char *dataServer = "http://192.168.0.200:1880/dataEndpoint";
 
 HTTPClient http;
 
@@ -54,6 +62,10 @@ unsigned long oldTime = 0;
 //FIXME: testing section
 cv_data cv_params = {0, 0, 2000, -2000, 50, 2, 0};
 bool stopFlag = false;
+bool configured = false;
+String voltArr = "";
+String currArr= "";
+int dataPoints=0;
 //FIXME: testing section
 
 void setup()
@@ -83,13 +95,14 @@ void setup()
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
-    //String jsonPayload = "{{\"1\":\"5\"},{\"2\":\"6\"}}";
+    String jsonPayload = "{ \"sample pack 1\": {\"V\": 5,\"C\": 31},\"sample pack 2\": {\"V\": 6,\"C\": 32}}";
 
     //http.begin(dataServer);
     //http.addHeader("Content-Type", "application/json");
-   // http.POST(jsonPayload);
-    // http.end();
-
+    //int respCode=http.POST(jsonPayload);
+   // http.end();
+    //Serial.print("Response code :");
+    //Serial.println(respCode);
     http.begin(serverName);
     http.addHeader("Content-Type", "application/json");
 }
@@ -99,7 +112,7 @@ void loop(void)
     if (oldTime + interval <= millis()) // once per 2 seconds check if server has some commands
     { 
         Serial.println("requesting server commands");
-        int8_t resp = http.GET();
+        int resp = http.GET();
         Serial.print("Response from server : ");
         Serial.println(resp);
         if (resp == 200)
@@ -199,7 +212,23 @@ void resolveServerRequest() //TODO: change the way commands are received. Change
     }
     else if(responseString=="test")
     {   
-        //testing section for new functions
+        JsonArray Jvolt = jsonData.createNestedArray("Voltage");
+        JsonArray Jcurr = jsonData.createNestedArray("Current");
+        for(int i=0;i<50;i++)
+        {
+            Jvolt.add(i);
+            Jcurr.add(50-i);
+        }
+
+        String output;
+        serializeJson(jsonData,output);
+            http.begin(dataServer);
+    http.addHeader("Content-Type", "application/json");
+    int respCode=http.POST(output);
+   http.end();
+    Serial.print("Response code :");
+    Serial.println(respCode);
+        
     }
     else
     {
@@ -778,10 +807,27 @@ void cv_update()
     {
         set_output(cv_output,true);
         read_potential_current();
+        /*
         Serial.print(potential,5);
         Serial.print("    ");
         Serial.print(current,10);
         Serial.println(" ");
+        */
+            Jvolt.add(potential);
+            Jcurr.add(current);
+            dataPoints++;
+        if(dataPoints == 50)
+        {
+        String output;
+        serializeJson(jsonData, output);
+        http.begin(dataServer);
+        http.addHeader("Content-Type", "application/json");
+        int respCode = http.POST(output);
+        http.end();
+        Serial.print("Response code :");
+        Serial.println(respCode);
+        dataPoints=0;
+        }
     }
 }
 
@@ -789,4 +835,26 @@ void cv_stop() // set device to idle settings
 {
     set_cell_status(false);
     set_output(0,1); 
+}
+
+void addToArray(float pot, float curr)
+{
+    if(!configured)
+    {
+        voltArr ="\"voltage\":[";
+        currArr ="\"curr\":[";
+        configured = true;
+    }
+
+    voltArr += String(pot) +",";
+    currArr += String(curr) +",";
+
+
+
+
+    /*{
+     "voltage":[1,2,3,4,5,6,7,8,9,10],
+     "curr":[11,12,13,14,15,16,17,18,19,20]
+    }
+    */
 }
