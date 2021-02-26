@@ -20,7 +20,7 @@ void ClockPulse();
 void SPIDelay();
 
 void MCP23S09_Init();
-void MCP23S09_Set();
+void MCP23S09_Set(uint8_t port);
 
 
 #endif

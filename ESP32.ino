@@ -65,13 +65,17 @@ void setup()
     delay(25);
     DAC1220_Init();
 
-   // MCP23S09_Init();
-    //MCP23S09_Set();
+
     //get DAC calibration from eeprom
     //apply DAC calibration;
 
     Serial.begin(115200);                     // debug Serial
     potStat.begin(19200, SERIAL_8N1, 36, 26); // Pot/Galvanostat Serial
+
+        MCP23S09_Init();
+
+        MCP23S09_Set(0b00001111);
+
 
     WiFi.begin(ssid, password);
     Serial.println("");
@@ -497,7 +501,7 @@ void set_dac_calibration(long offset, long gain)
 void set_output(long value, bool volts) //set output in volts
 {
     char DACbyte1, DACbyte2, DACbyte3;
-    //Serial.println("Received value : "+ String(value));
+    Serial.println("Received value : "+ String(value));
     float calculatedVal = ((value / 1000.0) / 8.0 * pow(2, 19)) + int(round((float)potential_offset / 4.0));
     //Serial.println("calulated value : "+ String(calculatedVal));
     decimal_to_dac_bytes(calculatedVal, &DACbyte1, &DACbyte2, &DACbyte3);
