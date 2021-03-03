@@ -5,6 +5,13 @@
 #define STAPSK "brg18f12"
 #endif
 
+#define SERVERNAME "http://192.168.0.200:1880/espTest"
+#define DATASERVER "http://192.168.0.200:1880/dataEndpoint"
+//EEPROM memory addresses
+#define DACcalAddr 0
+#define shuntCalAddr 10
+#define ADCCalAddr 20
+
 
 //pinout
 #define RANGE_PIN_1 21

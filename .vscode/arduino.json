@@ -2,5 +2,5 @@
     "sketch": "ESP32.ino",
     "port": "COM6",
     "board": "esp32:esp32:esp32wrover",
-    "configuration": "PartitionScheme=default,FlashMode=qio,FlashFreq=80,UploadSpeed=921600,DebugLevel=none"
+    "configuration": "PartitionScheme=huge_app,FlashMode=qio,FlashFreq=80,UploadSpeed=921600,DebugLevel=none"
 }

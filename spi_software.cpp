@@ -32,16 +32,27 @@ void MCP23S09_Init()
     WriteByteSPI(OPCODEW);  //device opcode
     WriteByteSPI(IOCON);    //reg addr
     WriteByteSPI(0x20);     //disable address incrementing
+    digitalWrite(CS_ONBOARD_ELECTRODES,HIGH);
+    SPIDelay();
+    ClockPulse();
+    SPIDelay();
+    digitalWrite(CS_ONBOARD_ELECTRODES,LOW);
     SPIDelay();
     WriteByteSPI(OPCODEW);  //device opcode
     WriteByteSPI(IODIR);    //reg addr
     WriteByteSPI(0x00);     //set up all pins as output
+    digitalWrite(CS_ONBOARD_ELECTRODES,HIGH);
+    SPIDelay();
+    ClockPulse();
+    SPIDelay();
+    digitalWrite(CS_ONBOARD_ELECTRODES,LOW);
     SPIDelay();
     WriteByteSPI(OPCODEW);  //opcode
     WriteByteSPI(GPPU);     //Pull up reg addr
     WriteByteSPI(0xFF);     //set up all pull-up resistors
     SPIDelay();
     digitalWrite(CS_ONBOARD_ELECTRODES,HIGH);
+    ClockPulse();
     pinMode(SDIO,INPUT);
 }
 
@@ -54,13 +65,9 @@ void MCP23S09_Set(uint8_t port)
     WriteByteSPI(GPIO_); //GPIO Addr register
     WriteByteSPI(port);
     SPIDelay();
-    WriteByteSPI(OPCODEW);
-    WriteByteSPI(OLAT);
-    WriteByteSPI(port);
     digitalWrite(CS_ONBOARD_ELECTRODES,HIGH);
+    ClockPulse();
     pinMode(SDIO,INPUT);
-    
-    
 }
 
 
