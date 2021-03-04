@@ -16,7 +16,8 @@
         "new": "cpp",
         "sstream": "cpp",
         "streambuf": "cpp",
-        "cmath": "c"
+        "cmath": "c",
+        "iomanip": "cpp"
     },
     "C_Cpp.errorSquiggles": "Enabled"
 }

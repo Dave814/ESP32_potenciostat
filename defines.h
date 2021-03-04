@@ -1,17 +1,22 @@
-#ifndef STASSID //Wi-Fi Credentials
+//WIFI credentials
 //#define STASSID "ADB-CFF9A1"
 //#define STAPSK  "rce6bn743cjr"
 #define STASSID "Wi-Pi"
 #define STAPSK "brg18f12"
-#endif
 
+//Server addresses
 #define SERVERNAME "http://192.168.0.200:1880/espTest"
 #define DATASERVER "http://192.168.0.200:1880/dataEndpoint"
-//EEPROM memory addresses
-#define DACcalAddr 0
-#define shuntCalAddr 10
-#define ADCCalAddr 20
 
+//board layout config
+#define SINGLEWE false  // FW setup for different boards !!!! 
+#define MULTIWE true
+
+//EEPROM memory addresses
+#define DACCALADDR 0
+#define ADCPOTOFFSETADDR 6
+#define ADCCURROFFSETADDR 10 
+#define SHUNTCALADDR 14
 
 //pinout
 #define RANGE_PIN_1 21
@@ -31,8 +36,8 @@
 #define CLK 5
 
 // variables
-#define POTENTIOSTATIC 1
-#define GALVANOSTATIC 0
+#define POTENTIOSTATIC 0
+#define GALVANOSTATIC 1
 #define RANGE1 0
 #define RANGE2 1
 #define RANGE3 2
@@ -50,5 +55,8 @@
 #define INTCAP 0x08
 #define GPIO_ 0x09
 #define OLAT 0x0A
-
+    //instructions
 #define OPCODEW 0x40
+
+//misc
+#define interval 2000 //check for instructions every 2 seconds
