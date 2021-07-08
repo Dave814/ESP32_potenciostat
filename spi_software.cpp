@@ -44,15 +44,30 @@ void MCP23S09_Init()
     digitalWrite(CS_ONBOARD_ELECTRODES,HIGH);
     SPIDelay();
     ClockPulse();
+#ifdef BOARD_VER_1
     SPIDelay();
     digitalWrite(CS_ONBOARD_ELECTRODES,LOW);
     SPIDelay();
     WriteByteSPI(OPCODEW);  //opcode
     WriteByteSPI(GPPU);     //Pull up reg addr
     WriteByteSPI(0xFF);     //set up all pull-up resistors
+    
     SPIDelay();
     digitalWrite(CS_ONBOARD_ELECTRODES,HIGH);
     ClockPulse();
+    SPIDelay();
+#endif
+    /*
+    digitalWrite(CS_ONBOARD_ELECTRODES,LOW);
+    WriteByteSPI(OPCODEW);
+    WriteByteSPI(IPOL);
+    WriteByteSPI(0xFF); // invert logic of pins 
+    SPIDelay();
+    digitalWrite(CS_ONBOARD_ELECTRODES,HIGH);
+    SPIDelay();
+    ClockPulse();
+*/
+
     pinMode(SDIO,INPUT);
 }
 

@@ -11,28 +11,36 @@
 //board layout config
 #define SINGLEWE false  // FW setup for different boards !!!! 
 #define MULTIWE true
+//board version config
+#define BOARD_VER_2
+
+#define CELL_1 1
+#define CELL_2 2
 
 //EEPROM memory addresses
-#define DACCALADDR 0
-#define ADCPOTOFFSETADDR 6
-#define ADCCURROFFSETADDR 10 
-#define SHUNTCALADDR 14
+#define DACGAINADDR 0
+#define DACOFFSETADDR 4
+#define ADCPOTOFFSETADDR 8
+#define ADCCURROFFSETADDR 12 
+#define SHUNTCALADDR 16
 
 //pinout
 #define RANGE_PIN_1 21
 #define RANGE_PIN_2 22
 #define RANGE_PIN_3 23
 
+#define ONEWIREBUS 14
+
 //communication
 #define SDIO 18
 #define SDIO2 19
 #define CS_MODULE_1 16
 #define CS_MODULE_2 4
-#define CS_MODULE_3 17
+#define CS_MODULE_3 17 //17 original
 #define MODE_SW 15
 #define CS1 2
 #define CS2 13
-#define CS_ONBOARD_ELECTRODES 12
+#define CS_ONBOARD_ELECTRODES 12 //12 original
 #define CLK 5
 
 // variables
