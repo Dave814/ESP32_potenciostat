@@ -1,8 +1,7 @@
 //WIFI credentials
-//#define STASSID "ADB-CFF9A1"
-//#define STAPSK  "rce6bn743cjr"
-#define STASSID "Wi-Pi"
-#define STAPSK "brg18f12"
+
+#define STASSID "SSID"
+#define STAPSK "PASS"
 
 //Server addresses
 #define SERVERNAME "http://192.168.0.200:1880/espTest"
